@@ -23,6 +23,8 @@ interface RulesTableProps {
   onMoveRule: (ruleId: string, direction: 'up' | 'down') => void;
   onDeleteRule: (ruleId: string) => void;
   onEditRule: (rule: FirewallRule) => void;
+  onOpenAddRule?: () => void;
+  currentSyntax?: string;
 }
 
 export const RulesTable: React.FC<RulesTableProps> = ({
@@ -32,7 +34,9 @@ export const RulesTable: React.FC<RulesTableProps> = ({
   onToggleRule,
   onMoveRule,
   onDeleteRule,
-  onEditRule
+  onEditRule,
+  onOpenAddRule,
+  currentSyntax = 'routeros'
 }) => {
   const [tableFilter, setTableFilter] = useState<string>('all');
   const [chainFilter, setChainFilter] = useState<string>('all');
@@ -153,8 +157,31 @@ export const RulesTable: React.FC<RulesTableProps> = ({
           <tbody className="divide-y divide-slate-800/60 font-sans">
             {filteredRules.length === 0 ? (
               <tr>
-                <td colSpan={7} className="py-8 text-center text-slate-500">
-                  Nenhuma regra encontrada com os filtros selecionados.
+                <td colSpan={7} className="py-12 text-center text-slate-400">
+                  {rules.length === 0 ? (
+                    <div className="max-w-md mx-auto space-y-3">
+                      <div className="w-12 h-12 rounded-2xl bg-cyan-950/40 border border-cyan-800/40 text-cyan-400 flex items-center justify-center mx-auto">
+                        <Layers className="w-6 h-6" />
+                      </div>
+                      <h4 className="text-sm font-bold text-slate-200">
+                        Cenário Manual Vazio ({currentSyntax.toUpperCase()})
+                      </h4>
+                      <p className="text-xs text-slate-400 leading-relaxed">
+                        Nenhuma regra cadastrada ainda. Crie sua primeira regra de firewall para validar o comportamento dos pacotes no fluxo de decisão.
+                      </p>
+                      {onOpenAddRule && (
+                        <button
+                          type="button"
+                          onClick={onOpenAddRule}
+                          className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white font-medium rounded-lg text-xs shadow-md shadow-cyan-950/50 inline-flex items-center gap-1.5 transition"
+                        >
+                          <span>+ Adicionar Primeira Regra</span>
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <span>Nenhuma regra encontrada com os filtros selecionados.</span>
+                  )}
                 </td>
               </tr>
             ) : (

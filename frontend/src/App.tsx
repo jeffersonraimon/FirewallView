@@ -41,6 +41,13 @@ export function App() {
 
   const debounceTimerRef = useRef<number | null>(null);
 
+  const handleClearToBlank = () => {
+    setRules([]);
+    setAddressLists({});
+    setSelectedStage(null);
+    executeSimulation(packet, [], {});
+  };
+
   // Load initial preset
   useEffect(() => {
     loadPresetData('routeros');
@@ -168,7 +175,11 @@ export function App() {
           setRuleToEdit(null);
           setIsRuleEditorOpen(true);
         }}
+        onClearRules={handleClearToBlank}
         onLoadPreset={loadPresetData}
+        onChangeSyntax={(syntax) => {
+          setCurrentSyntax(syntax);
+        }}
         rulesCount={rules.length}
         addressListsCount={Object.keys(addressLists).length}
         currentSyntax={currentSyntax}
@@ -204,12 +215,17 @@ export function App() {
             setRuleToEdit(rule);
             setIsRuleEditorOpen(true);
           }}
+          onOpenAddRule={() => {
+            setRuleToEdit(null);
+            setIsRuleEditorOpen(true);
+          }}
+          currentSyntax={currentSyntax}
         />
       </main>
 
       {/* Footer */}
       <footer className="border-t border-slate-900 bg-slate-950 py-4 px-6 text-center text-xs text-slate-500">
-        <p>FirewallView &bull; Simulador de Políticas de Segurança de Rede Multi-Plataforma &bull; MikroTik RouterOS v6/v7, iptables, nftables, Cisco ACL</p>
+        <p>FirewallView &bull; Simulador de Políticas de Segurança de Rede Multi-Plataforma &bull; MikroTik RouterOS, Linux iptables/nftables, Cisco ACL, Juniper Junos</p>
       </footer>
 
       {/* Modals */}
@@ -235,6 +251,7 @@ export function App() {
         ruleToEdit={ruleToEdit}
         onSaveRule={handleSaveRule}
         addressLists={addressLists}
+        currentSyntax={currentSyntax}
       />
     </div>
   );

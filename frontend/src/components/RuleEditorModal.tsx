@@ -8,6 +8,7 @@ interface RuleEditorModalProps {
   ruleToEdit: FirewallRule | null;
   onSaveRule: (rule: FirewallRule) => void;
   addressLists: Record<string, AddressList>;
+  currentSyntax?: string;
 }
 
 export const RuleEditorModal: React.FC<RuleEditorModalProps> = ({
@@ -15,7 +16,8 @@ export const RuleEditorModal: React.FC<RuleEditorModalProps> = ({
   onClose,
   ruleToEdit,
   onSaveRule,
-  addressLists
+  addressLists,
+  currentSyntax = 'routeros'
 }) => {
   const [table, setTable] = useState('filter');
   const [chain, setChain] = useState('forward');
@@ -59,7 +61,11 @@ export const RuleEditorModal: React.FC<RuleEditorModalProps> = ({
       setConnStates(ruleToEdit.conditions.connection_state || []);
     } else {
       setTable('filter');
-      setChain('forward');
+      let defaultChain = 'forward';
+      if (currentSyntax === 'iptables') defaultChain = 'FORWARD';
+      else if (currentSyntax === 'cisco') defaultChain = 'WAN_IN';
+      else if (currentSyntax === 'junos') defaultChain = 'FILTER_INBOUND';
+      setChain(defaultChain);
       setAction('accept');
       setTargetChain('');
       setNatAddresses('');
@@ -76,7 +82,7 @@ export const RuleEditorModal: React.FC<RuleEditorModalProps> = ({
       setOutIface('');
       setConnStates([]);
     }
-  }, [ruleToEdit, isOpen]);
+  }, [ruleToEdit, isOpen, currentSyntax]);
 
   if (!isOpen) return null;
 
