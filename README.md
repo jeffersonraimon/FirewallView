@@ -11,9 +11,14 @@ Ele permite validar previamente como pacotes de rede (TCP, UDP, ICMP, etc.) se c
 ## ✨ Recursos Principais
 
 - **Simulação Interativa de Fluxo (Packet Trace & Inspector)**:
+  - Suporte completo aos 3 fluxos L3 de roteador: **Forward** (trânsito), **Input** (destinado ao roteador) e **Output** (originado localmente no roteador).
   - Defina pacotes de teste com IPs de origem/destino, portas, protocolo, interfaces (`in-interface`, `out-interface`), connection states (`new`, `established`, `related`, `invalid`) e flags TCP (`SYN`, `ACK`, `FIN`, `RST`, etc.).
-  - Presets rápidos para 1 clique (Acesso Web LAN → WAN, SSH de Admin, Ataque Bogon / Botnet, Port Forwarding NAT, Ping ICMP).
+  - Presets rápidos para 1 clique (Acesso Web LAN → WAN, SSH de Admin, Ataque Bogon / Botnet, Port Forwarding NAT, Ping ICMP, Router Output DNS 53).
   - Veredito imediato com destaque visual e detalhamento do motivo de match/mismatch por critério.
+
+- **Persistência Automática no Navegador (localStorage)**:
+  - Todo o seu trabalho (equipamento selecionado, regras criadas manualmente, Address Lists e configurações do pacote de teste) é salvo automaticamente no seu navegador.
+  - Ao recarregar a página (`F5`), suas alterações são preservadas e o ambiente continua exatamente onde você parou, sem sobrescrever com templates padrões.
 
 - **Suporte Multi-Sintaxe de Firewall**:
   - **MikroTik RouterOS (v6 e v7)**: `/ip firewall filter`, `/ip firewall nat`, `/ip firewall mangle`, `/ip firewall raw`, `/ip firewall address-list`.

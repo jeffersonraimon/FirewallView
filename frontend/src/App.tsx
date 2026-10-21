@@ -9,29 +9,71 @@ import { RuleEditorModal } from './components/RuleEditorModal';
 import { FirewallRule, AddressList, SimulationPacket, SimulationResult } from './types';
 import { fetchPreset, runSimulation } from './api/client';
 
+const STORAGE_KEY_SYNTAX = 'firewallview_current_syntax';
+const STORAGE_KEY_RULES = 'firewallview_rules';
+const STORAGE_KEY_LISTS = 'firewallview_address_lists';
+const STORAGE_KEY_PACKET = 'firewallview_packet';
+
+const DEFAULT_PACKET: SimulationPacket = {
+  src_ip: '192.168.88.100',
+  dst_ip: '142.250.190.46',
+  src_port: 54321,
+  dst_port: 80,
+  protocol: 'tcp',
+  in_interface: 'ether2-lan',
+  out_interface: 'ether1-wan',
+  connection_state: 'new',
+  tcp_flags: ['syn'],
+  packet_marks: [],
+  flow_type: 'forward',
+  is_router_traffic: false
+};
+
 export function App() {
-  const [rules, setRules] = useState<FirewallRule[]>([]);
-  const [addressLists, setAddressLists] = useState<Record<string, AddressList>>({});
-  const [packet, setPacket] = useState<SimulationPacket>({
-    src_ip: '192.168.88.100',
-    dst_ip: '142.250.190.46',
-    src_port: 54321,
-    dst_port: 80,
-    protocol: 'tcp',
-    in_interface: 'ether2-lan',
-    out_interface: 'ether1-wan',
-    connection_state: 'new',
-    tcp_flags: ['syn'],
-    packet_marks: [],
-    flow_type: 'forward',
-    is_router_traffic: false
+  const [currentSyntax, setCurrentSyntax] = useState<string>(() => {
+    return localStorage.getItem(STORAGE_KEY_SYNTAX) || 'routeros';
+  });
+
+  const [rules, setRules] = useState<FirewallRule[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_RULES);
+    if (saved !== null) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error('Error parsing stored rules', e);
+      }
+    }
+    return [];
+  });
+
+  const [addressLists, setAddressLists] = useState<Record<string, AddressList>>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_LISTS);
+    if (saved !== null) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error('Error parsing stored address lists', e);
+      }
+    }
+    return {};
+  });
+
+  const [packet, setPacket] = useState<SimulationPacket>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_PACKET);
+    if (saved !== null) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error('Error parsing stored packet', e);
+      }
+    }
+    return DEFAULT_PACKET;
   });
 
   const [simulationResult, setSimulationResult] = useState<SimulationResult | null>(null);
   const [selectedStage, setSelectedStage] = useState<string | null>(null);
   const [autoSimulate, setAutoSimulate] = useState<boolean>(true);
   const [loading, setLoading] = useState<boolean>(false);
-  const [currentSyntax, setCurrentSyntax] = useState<string>('routeros');
 
   // Modals state
   const [isImportExportOpen, setIsImportExportOpen] = useState<boolean>(false);
@@ -41,6 +83,40 @@ export function App() {
   const [ruleToEdit, setRuleToEdit] = useState<FirewallRule | null>(null);
 
   const debounceTimerRef = useRef<number | null>(null);
+  const isFirstMount = useRef<boolean>(true);
+
+  // Sync state changes to localStorage
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_SYNTAX, currentSyntax);
+  }, [currentSyntax]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_RULES, JSON.stringify(rules));
+  }, [rules]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_LISTS, JSON.stringify(addressLists));
+  }, [addressLists]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_PACKET, JSON.stringify(packet));
+  }, [packet]);
+
+  // Initial load: either run existing state from localStorage, or load preset if first time ever
+  useEffect(() => {
+    if (isFirstMount.current) {
+      isFirstMount.current = false;
+      const hasStoredData = localStorage.getItem(STORAGE_KEY_RULES) !== null;
+
+      if (hasStoredData) {
+        // Restore and simulate immediately with user's saved state
+        executeSimulation(packet, rules, addressLists);
+      } else {
+        // First visit ever: load default routeros preset
+        loadPresetData('routeros');
+      }
+    }
+  }, []);
 
   const handleClearToBlank = () => {
     setRules([]);
@@ -48,11 +124,6 @@ export function App() {
     setSelectedStage(null);
     executeSimulation(packet, [], {});
   };
-
-  // Load initial preset
-  useEffect(() => {
-    loadPresetData('routeros');
-  }, []);
 
   const loadPresetData = async (presetName: string) => {
     setLoading(true);
