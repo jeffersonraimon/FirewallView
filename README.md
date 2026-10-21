@@ -125,5 +125,12 @@ FirewallView/
 ├── Dockerfile               # Build multi-stage otimizado
 ├── docker-compose.yml       # Orquestração do contêiner
 ├── run.sh                   # Script executável de inicialização
+├── LICENSE                  # Licença MIT
 └── README.md                # Documentação
 ```
+
+---
+
+## 📄 Licença
+
+Este projeto está sob a licença [MIT](LICENSE). Consulte o arquivo [LICENSE](LICENSE) para mais detalhes.
