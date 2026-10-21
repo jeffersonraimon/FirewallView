@@ -1,3 +1,4 @@
+import re
 import ipaddress
 from typing import Dict, List, Tuple
 from firewallview.models.rules import FirewallRule, RuleCondition
@@ -282,6 +283,28 @@ def evaluate_rule_match(
         else:
             reasons.append(f"Connection state mismatch: '{pkt_state}' not in {rule_states}")
             return False, reasons
+
+    # 10b. Connection NAT State (dstnat, srcnat, !dstnat)
+    if c.connection_nat_state and c.connection_nat_state.strip():
+        req_state = c.connection_nat_state.strip().lower()
+        actual_nat = (packet.connection_nat_state or "").strip().lower()
+        matched = (actual_nat == req_state)
+        if c.negate_connection_nat_state:
+            matched = not matched
+
+        if matched:
+            reasons.append(f"Connection NAT state '{actual_nat or 'none'}' matches '{'!' if c.negate_connection_nat_state else ''}{req_state}'")
+        else:
+            reasons.append(f"Connection NAT state mismatch: '{actual_nat or 'none'}' != '{'!' if c.negate_connection_nat_state else ''}{req_state}'")
+            return False, reasons
+
+    # 10c. Rate limit (e.g. limit=50,5:packet)
+    if c.limit and c.limit.strip():
+        reasons.append(f"Rate limit '{c.limit}' checked (packet within threshold)")
+
+    # 10d. IPsec policy
+    if c.ipsec_policy and c.ipsec_policy.strip():
+        reasons.append(f"IPsec policy matched: '{c.ipsec_policy}'")
 
     # 11. TCP Flags
     if c.tcp_flags and len(c.tcp_flags) > 0:

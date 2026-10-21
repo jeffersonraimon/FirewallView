@@ -246,9 +246,10 @@ class FirewallSimulator:
                     packet.dst_ip = rule.nat_to_addresses
                 if rule.nat_to_ports:
                     try:
-                        packet.dst_port = int(rule.nat_to_ports)
+                        packet.dst_port = int(rule.nat_to_ports.split("-")[0].strip())
                     except ValueError:
                         pass
+                packet.connection_nat_state = "dstnat"
                 new_dst = f"{packet.dst_ip}:{packet.dst_port}"
                 eval_item.applied_effect = f"Destination NAT applied: {orig_dst} -> {new_dst}"
                 stage_eval.evaluated_rules.append(eval_item)
@@ -261,6 +262,7 @@ class FirewallSimulator:
                     packet.src_ip = "203.0.113.1"
                 elif rule.nat_to_addresses:
                     packet.src_ip = rule.nat_to_addresses
+                packet.connection_nat_state = "srcnat"
                 new_src = f"{packet.src_ip}:{packet.src_port}"
                 eval_item.applied_effect = f"Source NAT applied: {orig_src} -> {new_src}"
                 stage_eval.evaluated_rules.append(eval_item)
@@ -271,6 +273,28 @@ class FirewallSimulator:
                 if mark not in packet.packet_marks:
                     packet.packet_marks.append(mark)
                 eval_item.applied_effect = f"Applied {action_lower}: '{mark}'"
+                stage_eval.evaluated_rules.append(eval_item)
+
+            elif action_lower in ["change-mss", "clamp-mss-to-pmtu"]:
+                mss = rule.mark_value or "1452"
+                eval_item.applied_effect = f"TCP MSS adjusted to {mss}"
+                stage_eval.evaluated_rules.append(eval_item)
+
+            elif action_lower in ["add-src-to-address-list", "add-dst-to-address-list"]:
+                target_list = rule.address_list_target or "DYNAMIC_LIST"
+                target_ip = packet.src_ip if "src" in action_lower else packet.dst_ip
+                timeout = rule.address_list_timeout or ""
+                if target_list not in self.address_lists:
+                    from firewallview.models.address_list import AddressList
+                    self.address_lists[target_list] = AddressList(name=target_list, entries=[])
+                already = any(e.address == target_ip for e in self.address_lists[target_list].entries)
+                if not already:
+                    import uuid
+                    from firewallview.models.address_list import AddressListEntry
+                    self.address_lists[target_list].entries.append(
+                        AddressListEntry(id=str(uuid.uuid4())[:8], address=target_ip, comment=f"Dynamic (timeout={timeout})" if timeout else "Dynamic", disabled=False)
+                    )
+                eval_item.applied_effect = f"Added {target_ip} dynamically to address-list '{target_list}'" + (f" (timeout: {timeout})" if timeout else "")
                 stage_eval.evaluated_rules.append(eval_item)
 
             elif action_lower in ["log", "passthrough"]:

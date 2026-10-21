@@ -260,6 +260,11 @@ export const RulesTable: React.FC<RulesTableProps> = ({
                             to: {rule.nat_to_addresses}{rule.nat_to_ports ? `:${rule.nat_to_ports}` : ''}
                           </span>
                         )}
+                        {rule.address_list_target && (
+                          <span className="text-[10px] text-emerald-300 block font-mono mt-0.5">
+                            +list: {rule.address_list_target}{rule.address_list_timeout ? ` (${rule.address_list_timeout})` : ''}
+                          </span>
+                        )}
                       </td>
 
                       {/* Conditions & Matchers */}
@@ -336,6 +341,27 @@ export const RulesTable: React.FC<RulesTableProps> = ({
                           {rule.conditions.tcp_flags && rule.conditions.tcp_flags.length > 0 && (
                             <span className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-amber-300">
                               tcp-flags:{rule.conditions.tcp_flags.join(',')}
+                            </span>
+                          )}
+
+                          {/* NAT Connection State */}
+                          {rule.conditions.connection_nat_state && (
+                            <span className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-purple-300 font-semibold">
+                              nat-state:{rule.conditions.negate_connection_nat_state ? '!' : ''}{rule.conditions.connection_nat_state}
+                            </span>
+                          )}
+
+                          {/* Limit */}
+                          {rule.conditions.limit && (
+                            <span className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-yellow-200">
+                              limit:{rule.conditions.limit}
+                            </span>
+                          )}
+
+                          {/* IPsec Policy */}
+                          {rule.conditions.ipsec_policy && (
+                            <span className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-indigo-300">
+                              ipsec:{rule.conditions.ipsec_policy}
                             </span>
                           )}
                         </div>

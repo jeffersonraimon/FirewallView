@@ -208,8 +208,8 @@ def test_routeros_port_parameter_and_protocol_filtering():
 
     # 1. Packet to port 53 (DNS) must NOT match WireGuard port 13231 -> should be dropped
     pkt_dns = SimulationPacket(
-        src_ip="4.228.31.150",
-        dst_ip="45.7.2.231",
+        src_ip="203.0.113.50",
+        dst_ip="198.51.100.1",
         src_port=54321,
         dst_port=53,
         protocol="udp",
@@ -221,8 +221,8 @@ def test_routeros_port_parameter_and_protocol_filtering():
 
     # 2. Packet to port 13231 (WireGuard) matches and is ACCEPTED
     pkt_wg = SimulationPacket(
-        src_ip="4.228.31.150",
-        dst_ip="45.7.2.231",
+        src_ip="203.0.113.50",
+        dst_ip="198.51.100.1",
         src_port=54321,
         dst_port=13231,
         protocol="udp",
@@ -234,8 +234,8 @@ def test_routeros_port_parameter_and_protocol_filtering():
 
     # 3. ICMP packet must NOT match port-specific rule
     pkt_icmp = SimulationPacket(
-        src_ip="4.228.31.150",
-        dst_ip="45.7.2.231",
+        src_ip="203.0.113.50",
+        dst_ip="198.51.100.1",
         src_port=0,
         dst_port=0,
         protocol="icmp",
@@ -244,5 +244,82 @@ def test_routeros_port_parameter_and_protocol_filtering():
     )
     res_icmp = sim.simulate(pkt_icmp)
     assert res_icmp.verdict == "DROP"
+
+def test_connection_nat_state_and_dynamic_address_list():
+    raw_script = """
+    /ip firewall nat add action=dst-nat chain=dstnat dst-port=8080 protocol=tcp to-addresses=192.168.1.100 to-ports=80
+    /ip firewall filter add action=add-src-to-address-list address-list=PORTSCAN address-list-timeout=3d chain=forward dst-port=23 protocol=tcp
+    /ip firewall filter add action=drop chain=forward comment="DROP ALL NOT DSTNATED" connection-nat-state=!dstnat in-interface-list=WAN
+    /ip firewall filter add action=accept chain=forward
+    """
+    rules, addr_lists = parse_routeros_script(raw_script)
+    assert len(rules) == 4
+    assert rules[1].action == "add-src-to-address-list"
+    assert rules[1].address_list_target == "PORTSCAN"
+    assert rules[2].conditions.connection_nat_state == "dstnat"
+    assert rules[2].conditions.negate_connection_nat_state is True
+
+    sim = FirewallSimulator(rules, addr_lists)
+
+    # Packet without DSTNAT from WAN -> should be dropped by DROP ALL NOT DSTNATED
+    pkt_non_dstnat = SimulationPacket(
+        src_ip="203.0.113.5",
+        dst_ip="198.51.100.1",
+        src_port=50000,
+        dst_port=9999,
+        protocol="tcp",
+        in_interface="WAN",
+        out_interface="LAN",
+        flow_type="forward"
+    )
+    res1 = sim.simulate(pkt_non_dstnat)
+    assert res1.verdict == "DROP"
+    assert res1.matched_rule_id == rules[2].id
+
+    # Packet with port 8080 gets DSTNAT -> bypasses connection-nat-state=!dstnat and gets ACCEPTED
+    pkt_dstnat = SimulationPacket(
+        src_ip="203.0.113.5",
+        dst_ip="198.51.100.1",
+        src_port=50000,
+        dst_port=8080,
+        protocol="tcp",
+        in_interface="WAN",
+        out_interface="LAN",
+        flow_type="forward"
+    )
+    res2 = sim.simulate(pkt_dstnat)
+    assert res2.verdict == "ACCEPT"
+    assert res2.packet_out.dst_port == 80
+    assert res2.packet_out.dst_ip == "192.168.1.100"
+
+    # Packet hitting port 23 adds source to PORTSCAN list dynamically
+    pkt_scan = SimulationPacket(
+        src_ip="198.51.100.99",
+        dst_ip="198.51.100.1",
+        src_port=51111,
+        dst_port=23,
+        protocol="tcp",
+        in_interface="LAN",
+        out_interface="LAN",
+        flow_type="forward"
+    )
+    sim.simulate(pkt_scan)
+    assert "PORTSCAN" in sim.address_lists
+    assert any(e.address == "198.51.100.99" for e in sim.address_lists["PORTSCAN"].entries)
+
+def test_ipv6_firewall_parser():
+    raw_script = """
+    /ipv6 firewall address-list add address=2001:db8:1000::/48 list=V6-DOCS-NET
+    /ipv6 firewall filter add action=accept chain=input comment="ACCEPT DHCPV6 CLIENT" in-interface-list=WAN port=546,547 protocol=udp
+    /ipv6 firewall filter add action=drop chain=forward comment="DROP NEW" connection-state=new in-interface-list=WAN
+    """
+    rules, addr_lists = parse_routeros_script(raw_script)
+    assert len(rules) == 2
+    assert "V6-DOCS-NET" in addr_lists
+    assert rules[0].chain == "input"
+    assert rules[0].conditions.port == "546,547"
+    assert rules[1].chain == "forward"
+    assert rules[1].action == "drop"
+
 
 

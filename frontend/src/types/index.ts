@@ -10,6 +10,9 @@ export interface RuleCondition {
   in_interface?: string;
   out_interface?: string;
   connection_state?: string[];
+  connection_nat_state?: string;
+  limit?: string;
+  ipsec_policy?: string;
   tcp_flags?: string[];
   packet_mark?: string;
   negate_src_address?: boolean;
@@ -22,6 +25,7 @@ export interface RuleCondition {
   negate_port?: boolean;
   negate_in_interface?: boolean;
   negate_out_interface?: boolean;
+  negate_connection_nat_state?: boolean;
 }
 
 export interface FirewallRule {
@@ -34,6 +38,8 @@ export interface FirewallRule {
   nat_to_addresses?: string;
   nat_to_ports?: string;
   mark_value?: string;
+  address_list_target?: string;
+  address_list_timeout?: string;
   conditions: RuleCondition;
   comment?: string;
   disabled: boolean;

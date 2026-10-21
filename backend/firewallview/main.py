@@ -70,7 +70,7 @@ def detect_syntax(content: str) -> str:
     content_lower = content.lower()
     if "prefix-list" in content_lower or "term " in content_lower or "then accept" in content_lower or "then discard" in content_lower or "family inet" in content_lower:
         return "junos"
-    if "/ip firewall" in content_lower:
+    if "/ip firewall" in content_lower or "/ipv6 firewall" in content_lower:
         return "routeros"
     if "access-list" in content_lower or "object-group network" in content_lower:
         return "cisco"

@@ -122,10 +122,28 @@ Ao adicionar ou modificar regras para qualquer firewall suportado:
 
 ---
 
-## ✅ 7. Checklist para Novos Recursos
+## 🔒 7. Privacidade, Segurança e Sanitização de Dados
+
+- **NUNCA utilize IPs reais de produção, ASN, provedores ou dados de clientes**:
+  - Em testes automatizados (`tests/`), fixtures, documentação, exemplos ou presets, utilize **exclusivamente endereços IP e prefixos genéricos/documentados pelas RFCs**:
+    - **RFC 5737 (IPv4 Documentation Blocks)**:
+      - `192.0.2.0/24` (TEST-NET-1)
+      - `198.51.100.0/24` (TEST-NET-2)
+      - `203.0.113.0/24` (TEST-NET-3)
+    - **RFC 1918 (Privados)**:
+      - `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`
+    - **RFC 3849 (IPv6 Documentation Block)**:
+      - `2001:db8::/32`
+  - Nomes de listas, comentários e interfaces em testes e presets devem ser fictícios e genéricos (ex: `LISTA_TESTE`, `NOC_ADMINS`, `ether1-wan`).
+  - Nunca commite exports brutos contendo endereços de roteadores ou firewalls reais do usuário.
+
+---
+
+## ✅ 8. Checklist para Novos Recursos
 
 Antes de finalizar qualquer modificação no código:
 - [ ] O backend roda `PYTHONPATH=. pytest tests/` com 100% dos testes passando?
+- [ ] Todos os IPs e subnets em testes, presets e exemplos utilizam faixas RFC genéricas (RFC 5737, RFC 1918, RFC 3849)?
 - [ ] O frontend compila sem nenhum erro TypeScript (`npm run build`)?
 - [ ] O contêiner Docker sobe limpo na porta 8080 e responde na rota raiz `/` e em `/api/health`?
 - [ ] A consistência visual segue estritamente a paleta semântica definida na seção 5?

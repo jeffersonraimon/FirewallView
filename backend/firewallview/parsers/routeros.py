@@ -100,19 +100,19 @@ def parse_routeros_script(content: str) -> Tuple[List[FirewallRule], Dict[str, A
         table = "filter"
 
         # Explicit command path takes precedence over ongoing context
-        if "/ip firewall filter" in cmd_lower:
+        if "/ip firewall filter" in cmd_lower or "/ipv6 firewall filter" in cmd_lower:
             table = "filter"
             current_context = "/ip firewall filter"
-        elif "/ip firewall nat" in cmd_lower:
+        elif "/ip firewall nat" in cmd_lower or "/ipv6 firewall nat" in cmd_lower:
             table = "nat"
             current_context = "/ip firewall nat"
-        elif "/ip firewall mangle" in cmd_lower:
+        elif "/ip firewall mangle" in cmd_lower or "/ipv6 firewall mangle" in cmd_lower:
             table = "mangle"
             current_context = "/ip firewall mangle"
-        elif "/ip firewall raw" in cmd_lower:
+        elif "/ip firewall raw" in cmd_lower or "/ipv6 firewall raw" in cmd_lower:
             table = "raw"
             current_context = "/ip firewall raw"
-        elif "/ip firewall address-list" in cmd_lower:
+        elif "/ip firewall address-list" in cmd_lower or "/ipv6 firewall address-list" in cmd_lower:
             is_address_list = True
             current_context = "/ip firewall address-list"
         elif "/ip firewall nat" in current_context or current_context.endswith("nat"):
@@ -259,6 +259,24 @@ def parse_routeros_script(content: str) -> Tuple[List[FirewallRule], Dict[str, A
             if conn_state:
                 cond.connection_state = [s.strip() for s in conn_state.split(",") if s.strip()]
 
+            # Connection NAT state
+            conn_nat_state = props.get("connection-nat-state")
+            if conn_nat_state:
+                if conn_nat_state.startswith("!"):
+                    cond.negate_connection_nat_state = True
+                    conn_nat_state = conn_nat_state[1:]
+                cond.connection_nat_state = conn_nat_state
+
+            # Limit
+            limit_val = props.get("limit")
+            if limit_val:
+                cond.limit = limit_val
+
+            # IPsec policy
+            ipsec_val = props.get("ipsec-policy")
+            if ipsec_val:
+                cond.ipsec_policy = ipsec_val
+
             # TCP flags
             tcp_flags = props.get("tcp-flags")
             if tcp_flags:
@@ -272,7 +290,14 @@ def parse_routeros_script(content: str) -> Tuple[List[FirewallRule], Dict[str, A
             target_chain = props.get("jump-target")
             nat_to_addresses = props.get("to-addresses")
             nat_to_ports = props.get("to-ports")
-            mark_value = props.get("new-packet-mark") or props.get("new-routing-mark") or props.get("new-connection-mark")
+            address_list_target = props.get("address-list")
+            address_list_timeout = props.get("address-list-timeout")
+            mark_value = (
+                props.get("new-packet-mark")
+                or props.get("new-routing-mark")
+                or props.get("new-connection-mark")
+                or props.get("new-mss")
+            )
 
             rule = FirewallRule(
                 id=str(rule_order),
@@ -284,6 +309,8 @@ def parse_routeros_script(content: str) -> Tuple[List[FirewallRule], Dict[str, A
                 nat_to_addresses=nat_to_addresses,
                 nat_to_ports=nat_to_ports,
                 mark_value=mark_value,
+                address_list_target=address_list_target,
+                address_list_timeout=address_list_timeout,
                 conditions=cond,
                 comment=comment,
                 disabled=disabled,

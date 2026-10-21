@@ -13,6 +13,9 @@ class RuleCondition(BaseModel):
     in_interface: Optional[str] = None
     out_interface: Optional[str] = None
     connection_state: Optional[List[str]] = Field(default_factory=list) # new, established, related, invalid, untracked
+    connection_nat_state: Optional[str] = None # dstnat, srcnat
+    limit: Optional[str] = None # 50,5:packet
+    ipsec_policy: Optional[str] = None # out,none
     tcp_flags: Optional[List[str]] = Field(default_factory=list) # syn, ack, fin, rst, etc.
     packet_mark: Optional[str] = None
 
@@ -27,17 +30,20 @@ class RuleCondition(BaseModel):
     negate_port: bool = False
     negate_in_interface: bool = False
     negate_out_interface: bool = False
+    negate_connection_nat_state: bool = False
 
 class FirewallRule(BaseModel):
     id: str
     order: int = 1
     table: str = "filter" # raw, mangle, nat, filter
     chain: str = "forward" # prerouting, input, forward, output, postrouting, dstnat, srcnat, or custom
-    action: str = "accept" # accept, drop, reject, fasttrack-connection, passthrough, jump, return, log, masquerade, src-nat, dst-nat, redirect, mark-packet, mark-routing
+    action: str = "accept" # accept, drop, reject, fasttrack-connection, add-src-to-address-list, etc.
     target_chain: Optional[str] = None
     nat_to_addresses: Optional[str] = None
     nat_to_ports: Optional[str] = None
     mark_value: Optional[str] = None
+    address_list_target: Optional[str] = None # target list for add-src-to-address-list
+    address_list_timeout: Optional[str] = None # e.g. 3d, 10s
     conditions: RuleCondition = Field(default_factory=RuleCondition)
     comment: Optional[str] = None
     disabled: bool = False

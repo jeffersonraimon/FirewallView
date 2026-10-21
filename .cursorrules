@@ -20,5 +20,6 @@ Always maintain absolute technical precision, visual consistency, and architectu
    - Always use `font-mono` for IP addresses, ports, protocols, and raw firewall syntax.
 6. **Container & Ports**: The single multi-stage Docker container runs on port 8080 and serves both the API and the React SPA.
 7. **Testing**: Run `PYTHONPATH=. pytest tests/` in `backend/` and `npm run build` in `frontend/` before completing tasks.
+8. **Privacy and Generic IPs**: NEVER use real production IPs, ASNs, ISP names, or customer data in tests, fixtures, presets, or code. Always use RFC 5737 (`192.0.2.0/24`, `198.51.100.0/24`, `203.0.113.0/24`), RFC 1918 (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), or RFC 3849 (`2001:db8::/32`).
 
 Refer to `AGENT.md` for full detailed specifications.
