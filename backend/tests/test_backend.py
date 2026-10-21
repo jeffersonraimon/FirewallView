@@ -1,0 +1,94 @@
+import pytest
+from firewallview.parsers.routeros import parse_routeros_script
+from firewallview.parsers.iptables import parse_iptables_script
+from firewallview.parsers.cisco import parse_cisco_acl
+from firewallview.parsers.nftables import parse_nftables_script
+from firewallview.models.packet import SimulationPacket
+from firewallview.engine.simulator import FirewallSimulator
+from firewallview.samples.presets import PRESET_ROUTEROS, PRESET_IPTABLES, PRESET_CISCO
+
+def test_routeros_parser_and_simulation():
+    rules, addr_lists = parse_routeros_script(PRESET_ROUTEROS)
+    assert len(rules) > 5
+    assert "BOGONS" in addr_lists
+    assert "TRUSTED_ADMINS" in addr_lists
+
+    # Test 1: Bogon IP from WAN should be DROPPED
+    pkt_bogon = SimulationPacket(
+        src_ip="10.5.5.5", # in BOGONS
+        dst_ip="192.168.88.50",
+        src_port=44444,
+        dst_port=80,
+        protocol="tcp",
+        in_interface="ether1-wan",
+        out_interface="ether2-lan"
+    )
+    sim = FirewallSimulator(rules, addr_lists)
+    res = sim.simulate(pkt_bogon)
+    assert res.verdict == "DROP"
+
+    # Test 2: Admin accessing SSH to router input should be ACCEPTED
+    pkt_admin = SimulationPacket(
+        src_ip="192.168.88.5", # in TRUSTED_ADMINS
+        dst_ip="192.168.88.1",
+        src_port=55555,
+        dst_port=22,
+        protocol="tcp",
+        in_interface="ether2-lan",
+        is_router_traffic=True
+    )
+    res2 = sim.simulate(pkt_admin)
+    assert res2.verdict == "ACCEPT"
+
+def test_iptables_parser():
+    rules, addr_lists = parse_iptables_script(PRESET_IPTABLES)
+    assert len(rules) > 5
+    assert "BAD_ACTORS" in addr_lists
+
+    # Bad actor input dropped
+    pkt_bad = SimulationPacket(
+        src_ip="198.51.100.10",
+        dst_ip="1.2.3.4",
+        src_port=1234,
+        dst_port=80,
+        protocol="tcp",
+        in_interface="eth0",
+        is_router_traffic=True
+    )
+    sim = FirewallSimulator(rules, addr_lists)
+    res = sim.simulate(pkt_bad)
+    assert res.verdict == "DROP"
+
+def test_cisco_parser():
+    rules, addr_lists = parse_cisco_acl(PRESET_CISCO)
+    assert len(rules) > 3
+    assert "BLOCKED_SUBNETS" in addr_lists
+
+def test_nftables_parser():
+    nft_text = """
+    table inet filter {
+        set blacklist {
+            type ipv4_addr
+            elements = { 10.10.10.10 }
+        }
+        chain input {
+            ip saddr @blacklist drop
+            tcp dport 22 accept
+        }
+    }
+    """
+    rules, sets = parse_nftables_script(nft_text)
+    assert len(rules) == 2
+    assert "blacklist" in sets
+
+    pkt = SimulationPacket(
+        src_ip="10.10.10.10",
+        dst_ip="192.168.1.1",
+        src_port=55000,
+        dst_port=22,
+        protocol="tcp",
+        is_router_traffic=True
+    )
+    sim = FirewallSimulator(rules, sets)
+    res = sim.simulate(pkt)
+    assert res.verdict == "DROP"

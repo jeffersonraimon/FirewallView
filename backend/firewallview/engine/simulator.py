@@ -1,0 +1,271 @@
+import copy
+from typing import Dict, List, Optional, Set
+from firewallview.models.rules import FirewallRule
+from firewallview.models.packet import SimulationPacket, SimulationResult, StageEvaluation, RuleEvaluation
+from firewallview.models.address_list import AddressList
+from firewallview.engine.matcher import evaluate_rule_match
+
+class FirewallSimulator:
+    def __init__(self, rules: List[FirewallRule], address_lists: Dict[str, AddressList]):
+        # Keep rules sorted by order
+        self.rules = sorted([r for r in rules if not r.disabled], key=lambda x: x.order)
+        self.address_lists = address_lists
+
+    def get_rules_for_chain(self, table: str, chain: str) -> List[FirewallRule]:
+        return [
+            r for r in self.rules
+            if (r.table.lower() == table.lower() and r.chain.lower() == chain.lower())
+        ]
+
+    def simulate(self, packet: SimulationPacket) -> SimulationResult:
+        # Create a deep copy of packet to track mutations (NAT, marks)
+        current_packet = copy.deepcopy(packet)
+        stages: List[StageEvaluation] = []
+        flow_path: List[str] = ["start"]
+
+        # Determine packet path type:
+        # 1. Router Input: traffic to router local IP / router service
+        # 2. Router Output: traffic from router
+        # 3. Forward: traffic traversing the router
+        is_input = packet.is_router_traffic
+
+        # Pipeline stages in canonical order:
+        # Stage definition: (stage_id, title, table, chain)
+        if is_input:
+            pipeline = [
+                ("raw_prerouting", "Raw - PREROUTING", "raw", "prerouting"),
+                ("mangle_prerouting", "Mangle - PREROUTING", "mangle", "prerouting"),
+                ("nat_dstnat", "NAT - DSTNAT", "nat", "dstnat"),
+                ("routing_decision_in", "Routing Decision (Local Input)", "", ""),
+                ("mangle_input", "Mangle - INPUT", "mangle", "input"),
+                ("filter_input", "Filter - INPUT", "filter", "input"),
+            ]
+        else:
+            pipeline = [
+                ("raw_prerouting", "Raw - PREROUTING", "raw", "prerouting"),
+                ("mangle_prerouting", "Mangle - PREROUTING", "mangle", "prerouting"),
+                ("nat_dstnat", "NAT - DSTNAT", "nat", "dstnat"),
+                ("routing_decision_fwd", "Routing Decision (Forward)", "", ""),
+                ("mangle_forward", "Mangle - FORWARD", "mangle", "forward"),
+                ("filter_forward", "Filter - FORWARD", "filter", "forward"),
+                ("mangle_postrouting", "Mangle - POSTROUTING", "mangle", "postrouting"),
+                ("nat_srcnat", "NAT - SRCNAT", "nat", "srcnat"),
+            ]
+
+        final_verdict = "ACCEPT"
+        final_action = "ACCEPT (Default Policy)"
+        terminal_rule_id: Optional[str] = None
+        is_terminated = False
+
+        for stage_id, stage_title, table, chain in pipeline:
+            flow_path.append(stage_id)
+
+            # Virtual routing decision step
+            if not table or not chain:
+                stages.append(StageEvaluation(
+                    stage_id=stage_id,
+                    stage_title=stage_title,
+                    table="system",
+                    chain="system",
+                    stage_verdict="CONTINUE",
+                    notes="Packet routed based on destination IP and routing table"
+                ))
+                continue
+
+            stage_eval = StageEvaluation(
+                stage_id=stage_id,
+                stage_title=stage_title,
+                table=table,
+                chain=chain,
+                stage_verdict="CONTINUE"
+            )
+
+            chain_rules = self.get_rules_for_chain(table, chain)
+
+            # Evaluate chain with jump support
+            stage_done, verdict_from_chain, term_id = self._evaluate_chain(
+                table, chain, chain_rules, current_packet, stage_eval, flow_path
+            )
+
+            stages.append(stage_eval)
+
+            if stage_done:
+                is_terminated = True
+                final_verdict = verdict_from_chain
+                final_action = verdict_from_chain
+                terminal_rule_id = term_id
+                break
+
+        # If not terminated by explicit rule, check default behavior
+        if not is_terminated:
+            final_verdict = "ACCEPT"
+            final_action = "ACCEPT (Default Policy)"
+            flow_path.append("delivered")
+        elif final_verdict in ["DROP", "REJECT"]:
+            flow_path.append("dropped")
+        else:
+            flow_path.append("delivered")
+
+        summary = self._generate_summary(final_verdict, final_action, terminal_rule_id, packet, current_packet)
+
+        return SimulationResult(
+            verdict=final_verdict,
+            final_action=final_action,
+            packet_in=packet,
+            packet_out=current_packet,
+            stages=stages,
+            flow_path=flow_path,
+            summary=summary,
+            matched_rule_id=terminal_rule_id
+        )
+
+    def _evaluate_chain(
+        self,
+        table: str,
+        chain: str,
+        rules: List[FirewallRule],
+        packet: SimulationPacket,
+        stage_eval: StageEvaluation,
+        flow_path: List[str],
+        call_stack: Optional[Set[str]] = None
+    ) -> (bool, str, Optional[str]):
+        """
+        Evaluates rules in chain.
+        Returns (terminated: bool, verdict: str, terminal_rule_id: Optional[str]).
+        """
+        if call_stack is None:
+            call_stack = set()
+
+        chain_key = f"{table}:{chain}"
+        if chain_key in call_stack:
+            # Prevent infinite recursion in jumps
+            stage_eval.notes = f"Warning: Loop detected in chain {chain_key}"
+            return False, "CONTINUE", None
+
+        call_stack.add(chain_key)
+
+        for rule in rules:
+            matched, reasons = evaluate_rule_match(rule, packet, self.address_lists)
+            action_lower = rule.action.strip().lower()
+
+            eval_item = RuleEvaluation(
+                rule_id=rule.id,
+                rule_order=rule.order,
+                table=rule.table,
+                chain=rule.chain,
+                action=rule.action,
+                matched=matched,
+                reasons=reasons,
+                comment=rule.comment,
+                raw_syntax=rule.raw_syntax
+            )
+
+            if not matched:
+                stage_eval.evaluated_rules.append(eval_item)
+                continue
+
+            # It matched! Now apply action logic
+            if action_lower == "drop":
+                eval_item.applied_effect = "Packet dropped immediately"
+                eval_item.terminated = True
+                stage_eval.evaluated_rules.append(eval_item)
+                stage_eval.stage_verdict = "DROPPED"
+                return True, "DROP", rule.id
+
+            elif action_lower == "reject":
+                eval_item.applied_effect = "Packet rejected (ICMP unreachable generated)"
+                eval_item.terminated = True
+                stage_eval.evaluated_rules.append(eval_item)
+                stage_eval.stage_verdict = "REJECTED"
+                return True, "REJECT", rule.id
+
+            elif action_lower in ["accept", "fasttrack-connection"]:
+                eval_item.applied_effect = f"Accepted by rule ({action_lower})"
+                eval_item.terminated = True
+                stage_eval.evaluated_rules.append(eval_item)
+                stage_eval.stage_verdict = "ACCEPTED"
+                # For filter table, accept is terminating for the filter stage!
+                if table.lower() == "filter":
+                    return False, "ACCEPT", rule.id # Finishes filter chain, proceeds to postrouting/delivery
+                return False, "CONTINUE", rule.id
+
+            elif action_lower == "return":
+                eval_item.applied_effect = "Returned to parent chain"
+                stage_eval.evaluated_rules.append(eval_item)
+                return False, "RETURN", None
+
+            elif action_lower == "jump":
+                target_chain = rule.target_chain
+                eval_item.applied_effect = f"Jumped to chain '{target_chain}'"
+                stage_eval.evaluated_rules.append(eval_item)
+                flow_path.append(f"jump_{target_chain}")
+
+                jump_rules = self.get_rules_for_chain(table, target_chain or "")
+                jump_done, jump_verdict, term_id = self._evaluate_chain(
+                    table, target_chain or "", jump_rules, packet, stage_eval, flow_path, call_stack
+                )
+                if jump_done:
+                    return True, jump_verdict, term_id
+                # If jump returned or ended without drop, continue next rule in current chain
+
+            elif action_lower == "dst-nat":
+                orig_dst = f"{packet.dst_ip}:{packet.dst_port}"
+                if rule.nat_to_addresses:
+                    packet.dst_ip = rule.nat_to_addresses
+                if rule.nat_to_ports:
+                    try:
+                        packet.dst_port = int(rule.nat_to_ports)
+                    except ValueError:
+                        pass
+                new_dst = f"{packet.dst_ip}:{packet.dst_port}"
+                eval_item.applied_effect = f"Destination NAT applied: {orig_dst} -> {new_dst}"
+                stage_eval.evaluated_rules.append(eval_item)
+                return False, "CONTINUE", rule.id
+
+            elif action_lower in ["src-nat", "masquerade"]:
+                orig_src = f"{packet.src_ip}:{packet.src_port}"
+                if action_lower == "masquerade":
+                    # Masquerade to out-interface gateway IP (example simulation: 203.0.113.1)
+                    packet.src_ip = "203.0.113.1"
+                elif rule.nat_to_addresses:
+                    packet.src_ip = rule.nat_to_addresses
+                new_src = f"{packet.src_ip}:{packet.src_port}"
+                eval_item.applied_effect = f"Source NAT applied: {orig_src} -> {new_src}"
+                stage_eval.evaluated_rules.append(eval_item)
+                return False, "CONTINUE", rule.id
+
+            elif action_lower in ["mark-packet", "mark-connection", "mark-routing"]:
+                mark = rule.mark_value or "marked"
+                if mark not in packet.packet_marks:
+                    packet.packet_marks.append(mark)
+                eval_item.applied_effect = f"Applied {action_lower}: '{mark}'"
+                stage_eval.evaluated_rules.append(eval_item)
+
+            elif action_lower in ["log", "passthrough"]:
+                eval_item.applied_effect = f"Action {action_lower} executed; packet continues"
+                stage_eval.evaluated_rules.append(eval_item)
+
+            else:
+                eval_item.applied_effect = f"Action {action_lower} executed"
+                stage_eval.evaluated_rules.append(eval_item)
+
+        return False, "CONTINUE", None
+
+    def _generate_summary(
+        self,
+        verdict: str,
+        final_action: str,
+        rule_id: Optional[str],
+        orig_packet: SimulationPacket,
+        final_packet: SimulationPacket
+    ) -> str:
+        nat_info = ""
+        if orig_packet.dst_ip != final_packet.dst_ip or orig_packet.dst_port != final_packet.dst_port:
+            nat_info += f" DNAT: {orig_packet.dst_ip}:{orig_packet.dst_port} -> {final_packet.dst_ip}:{final_packet.dst_port}."
+        if orig_packet.src_ip != final_packet.src_ip:
+            nat_info += f" SNAT: {orig_packet.src_ip} -> {final_packet.src_ip}."
+
+        if verdict in ["DROP", "REJECT"]:
+            return f"Packet was {verdict}PED by Rule #{rule_id}.{nat_info}"
+        else:
+            return f"Packet was PERMITTED ({final_action}).{nat_info}"
