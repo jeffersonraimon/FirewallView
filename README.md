@@ -4,6 +4,8 @@
 
 Ele permite validar previamente como pacotes de rede (TCP, UDP, ICMP, etc.) se comportam diante de tabelas de firewall complexas, analisando cada estágio do pipeline de decisão (Raw, Mangle, NAT, Routing, Filter) e inspecionando o veredito exato (ACCEPT, DROP, REJECT, NAT) e o motivo de match de cada regra.
 
+![Interface do FirewallView](img/interface.png)
+
 ---
 
 ## ✨ Recursos Principais
