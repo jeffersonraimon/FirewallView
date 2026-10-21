@@ -23,6 +23,7 @@ export function App() {
     connection_state: 'new',
     tcp_flags: ['syn'],
     packet_marks: [],
+    flow_type: 'forward',
     is_router_traffic: false
   });
 

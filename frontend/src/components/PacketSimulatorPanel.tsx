@@ -40,6 +40,7 @@ export const PacketSimulatorPanel: React.FC<PacketSimulatorPanelProps> = ({
           connection_state: 'new',
           tcp_flags: ['syn'],
           packet_marks: [],
+          flow_type: 'forward',
           is_router_traffic: false
         });
         break;
@@ -55,6 +56,7 @@ export const PacketSimulatorPanel: React.FC<PacketSimulatorPanelProps> = ({
           connection_state: 'new',
           tcp_flags: ['syn'],
           packet_marks: [],
+          flow_type: 'input',
           is_router_traffic: true
         });
         break;
@@ -70,6 +72,7 @@ export const PacketSimulatorPanel: React.FC<PacketSimulatorPanelProps> = ({
           connection_state: 'new',
           tcp_flags: ['syn'],
           packet_marks: [],
+          flow_type: 'forward',
           is_router_traffic: false
         });
         break;
@@ -85,6 +88,7 @@ export const PacketSimulatorPanel: React.FC<PacketSimulatorPanelProps> = ({
           connection_state: 'new',
           tcp_flags: ['syn'],
           packet_marks: [],
+          flow_type: 'forward',
           is_router_traffic: false
         });
         break;
@@ -100,6 +104,23 @@ export const PacketSimulatorPanel: React.FC<PacketSimulatorPanelProps> = ({
           connection_state: 'new',
           tcp_flags: [],
           packet_marks: [],
+          flow_type: 'input',
+          is_router_traffic: true
+        });
+        break;
+      case 'router_output':
+        onChangePacket({
+          src_ip: '192.168.88.1',
+          dst_ip: '8.8.8.8',
+          src_port: 49500,
+          dst_port: 53,
+          protocol: 'udp',
+          in_interface: '',
+          out_interface: 'ether1-wan',
+          connection_state: 'new',
+          tcp_flags: [],
+          packet_marks: [],
+          flow_type: 'output',
           is_router_traffic: true
         });
         break;
@@ -163,6 +184,13 @@ export const PacketSimulatorPanel: React.FC<PacketSimulatorPanelProps> = ({
             className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
           >
             Ping ICMP
+          </button>
+          <button
+            onClick={() => setPacketPreset('router_output')}
+            className="px-2 py-1 rounded bg-purple-950/60 hover:bg-purple-900/80 border border-purple-800/60 text-purple-300 transition"
+            title="Pacote originado no próprio roteador saindo para a internet (OUTPUT)"
+          >
+            Router Output (DNS 53)
           </button>
         </div>
       </div>
@@ -278,28 +306,60 @@ export const PacketSimulatorPanel: React.FC<PacketSimulatorPanelProps> = ({
           </div>
           <div>
             <label className="text-slate-400 block mb-1">Fluxo do Roteador</label>
-            <div className="flex gap-1.5">
+            <div className="grid grid-cols-3 gap-1">
               <button
                 type="button"
-                onClick={() => updateField('is_router_traffic', false)}
-                className={`flex-1 py-1 px-2 rounded text-center transition font-medium ${
-                  !packet.is_router_traffic
+                onClick={() => {
+                  onChangePacket({
+                    ...packet,
+                    flow_type: 'forward',
+                    is_router_traffic: false
+                  });
+                }}
+                className={`py-1 px-1 rounded text-center transition font-medium text-[11px] truncate ${
+                  (packet.flow_type || (packet.is_router_traffic ? 'input' : 'forward')) === 'forward'
                     ? 'bg-cyan-600 text-white'
                     : 'bg-slate-800 text-slate-400 hover:text-slate-200'
                 }`}
+                title="Tráfego passando pelo roteador (PREROUTING -> FORWARD -> POSTROUTING)"
               >
-                Forward (Trânsito)
+                Forward
               </button>
               <button
                 type="button"
-                onClick={() => updateField('is_router_traffic', true)}
-                className={`flex-1 py-1 px-2 rounded text-center transition font-medium ${
-                  packet.is_router_traffic
+                onClick={() => {
+                  onChangePacket({
+                    ...packet,
+                    flow_type: 'input',
+                    is_router_traffic: true
+                  });
+                }}
+                className={`py-1 px-1 rounded text-center transition font-medium text-[11px] truncate ${
+                  (packet.flow_type || (packet.is_router_traffic ? 'input' : 'forward')) === 'input'
                     ? 'bg-amber-600 text-white'
                     : 'bg-slate-800 text-slate-400 hover:text-slate-200'
                 }`}
+                title="Tráfego destinado ao roteador (PREROUTING -> INPUT)"
               >
-                Input (Local)
+                Input
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onChangePacket({
+                    ...packet,
+                    flow_type: 'output',
+                    is_router_traffic: true
+                  });
+                }}
+                className={`py-1 px-1 rounded text-center transition font-medium text-[11px] truncate ${
+                  packet.flow_type === 'output'
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-slate-800 text-slate-400 hover:text-slate-200'
+                }`}
+                title="Tráfego originado localmente no roteador (OUTPUT -> POSTROUTING)"
+              >
+                Output
               </button>
             </div>
           </div>

@@ -20,9 +20,9 @@ class FirewallSimulator:
         if matched:
             return matched
 
-        # If evaluating main filter forward/input and there are no rules explicitly named "forward"/"input",
+        # If evaluating main filter forward/input/output and there are no rules explicitly named,
         # but there are rules in filter table with named ACL or Junos filter names (e.g. JUNOS_EDGE_FILTER, WAN_IN)
-        if table.lower() == "filter" and chain.lower() in ["forward", "input"]:
+        if table.lower() == "filter" and chain.lower() in ["forward", "input", "output"]:
             all_filter_rules = [r for r in self.rules if r.table.lower() == "filter"]
             has_standard = any(r.chain.lower() in ["forward", "input", "output"] for r in all_filter_rules)
             if not has_standard and all_filter_rules:
@@ -36,15 +36,17 @@ class FirewallSimulator:
         stages: List[StageEvaluation] = []
         flow_path: List[str] = ["start"]
 
-        # Determine packet path type:
-        # 1. Router Input: traffic to router local IP / router service
-        # 2. Router Output: traffic from router
-        # 3. Forward: traffic traversing the router
-        is_input = packet.is_router_traffic
+        # Determine packet flow type:
+        # 1. 'input': traffic directed to router (prerouting -> input)
+        # 2. 'output': traffic generated locally by router (output -> postrouting)
+        # 3. 'forward': traffic traversing the router (prerouting -> forward -> postrouting)
+        flow_type = (packet.flow_type or "forward").lower()
+        if packet.is_router_traffic and flow_type == "forward":
+            flow_type = "input"
 
         # Pipeline stages in canonical order:
         # Stage definition: (stage_id, title, table, chain)
-        if is_input:
+        if flow_type == "input":
             pipeline = [
                 ("raw_prerouting", "Raw - PREROUTING", "raw", "prerouting"),
                 ("mangle_prerouting", "Mangle - PREROUTING", "mangle", "prerouting"),
@@ -52,6 +54,16 @@ class FirewallSimulator:
                 ("routing_decision_in", "Routing Decision (Local Input)", "", ""),
                 ("mangle_input", "Mangle - INPUT", "mangle", "input"),
                 ("filter_input", "Filter - INPUT", "filter", "input"),
+            ]
+        elif flow_type == "output":
+            pipeline = [
+                ("routing_decision_out", "Routing Decision (Local Output)", "", ""),
+                ("raw_output", "Raw - OUTPUT", "raw", "output"),
+                ("mangle_output", "Mangle - OUTPUT", "mangle", "output"),
+                ("nat_output", "NAT - OUTPUT", "nat", "output"),
+                ("filter_output", "Filter - OUTPUT", "filter", "output"),
+                ("mangle_postrouting", "Mangle - POSTROUTING", "mangle", "postrouting"),
+                ("nat_srcnat", "NAT - SRCNAT", "nat", "srcnat"),
             ]
         else:
             pipeline = [

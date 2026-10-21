@@ -61,7 +61,8 @@ export interface SimulationPacket {
   connection_state: string; // new, established, related, invalid, untracked
   tcp_flags: string[]; // syn, ack, fin, rst, etc.
   packet_marks: string[];
-  is_router_traffic: boolean;
+  flow_type?: 'forward' | 'input' | 'output';
+  is_router_traffic?: boolean;
 }
 
 export interface RuleEvaluation {

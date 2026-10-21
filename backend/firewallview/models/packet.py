@@ -12,7 +12,8 @@ class SimulationPacket(BaseModel):
     connection_state: str = "new" # new, established, related, invalid, untracked
     tcp_flags: List[str] = Field(default_factory=lambda: ["syn"]) # syn, ack, fin, rst, etc.
     packet_marks: List[str] = Field(default_factory=list)
-    is_router_traffic: bool = False # False = forward through router, True = directed to router (input) or from router (output)
+    flow_type: str = "forward" # "forward" (transit), "input" (to router), "output" (from router)
+    is_router_traffic: bool = False # kept for backward compatibility
 
 class RuleEvaluation(BaseModel):
     rule_id: str

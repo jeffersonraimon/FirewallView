@@ -124,3 +124,51 @@ def test_junos_parser_and_simulation():
     )
     res_admin = sim.simulate(pkt_admin)
     assert res_admin.verdict == "ACCEPT"
+
+def test_output_flow_simulation():
+    from firewallview.models.rules import FirewallRule, RuleCondition
+    rules = [
+        FirewallRule(
+            id="1",
+            order=1,
+            table="filter",
+            chain="output",
+            action="drop",
+            conditions=RuleCondition(protocol="tcp", dst_port="23"),
+            comment="Block telnet output from router"
+        ),
+        FirewallRule(
+            id="2",
+            order=2,
+            table="filter",
+            chain="output",
+            action="accept",
+            conditions=RuleCondition(protocol="udp", dst_port="53"),
+            comment="Allow DNS output from router"
+        )
+    ]
+    sim = FirewallSimulator(rules, {})
+
+    # Telnet from router dropped in OUTPUT filter
+    pkt_telnet = SimulationPacket(
+        src_ip="192.168.88.1",
+        dst_ip="8.8.8.8",
+        src_port=45000,
+        dst_port=23,
+        protocol="tcp",
+        flow_type="output"
+    )
+    res1 = sim.simulate(pkt_telnet)
+    assert res1.verdict == "DROP"
+
+    # DNS from router accepted in OUTPUT filter
+    pkt_dns = SimulationPacket(
+        src_ip="192.168.88.1",
+        dst_ip="1.1.1.1",
+        src_port=45001,
+        dst_port=53,
+        protocol="udp",
+        flow_type="output"
+    )
+    res2 = sim.simulate(pkt_dns)
+    assert res2.verdict == "ACCEPT"
