@@ -82,15 +82,33 @@ def is_port_matching(packet_port: int, condition_str: str) -> bool:
     return False
 
 def is_interface_matching(packet_iface: str, condition_iface: str) -> bool:
-    """Supports exact match or wildcard * (e.g. ether*)."""
+    """
+    Supports exact match, wildcard * (e.g. ether*), interface lists (e.g. WAN, LAN),
+    and composite entries like 'ether1, WAN' or 'ether1-wan'.
+    """
     if not packet_iface or not condition_iface:
         return False
     pkt = packet_iface.strip().lower()
     cond = condition_iface.strip().lower()
+
     if cond.endswith("*"):
         prefix = cond[:-1]
         return pkt.startswith(prefix)
-    return pkt == cond
+
+    # 1. Exact match
+    if pkt == cond:
+        return True
+
+    # 2. Tokenized match (e.g. packet is "ether1, WAN", "ether1 (WAN)", or "ether1-wan")
+    tokens = [t for t in re.split(r"[\s,;()/\-]+", pkt) if t]
+    if cond in tokens:
+        return True
+
+    cond_tokens = [t for t in re.split(r"[\s,;()/\-]+", cond) if t]
+    if pkt in cond_tokens:
+        return True
+
+    return False
 
 def evaluate_rule_match(
     rule: FirewallRule,

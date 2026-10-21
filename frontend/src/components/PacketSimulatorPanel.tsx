@@ -247,13 +247,14 @@ export const PacketSimulatorPanel: React.FC<PacketSimulatorPanelProps> = ({
             />
           </div>
           <div>
-            <label className="text-slate-400 block mb-1">In-Interface</label>
+            <label className="text-slate-400 block mb-1">In-Interface / List</label>
             <input
               type="text"
               value={packet.in_interface || ''}
               onChange={(e) => updateField('in_interface', e.target.value)}
               className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-100 font-mono focus:border-cyan-500 focus:outline-none"
-              placeholder="Ex: ether2-lan / eth1"
+              placeholder="Ex: ether2, LAN ou ether1, WAN"
+              title="Aceita interface física (ether1), lista (WAN, LAN) ou ambos (ether1, WAN)"
             />
           </div>
         </div>
@@ -284,13 +285,14 @@ export const PacketSimulatorPanel: React.FC<PacketSimulatorPanelProps> = ({
             />
           </div>
           <div>
-            <label className="text-slate-400 block mb-1">Out-Interface</label>
+            <label className="text-slate-400 block mb-1">Out-Interface / List</label>
             <input
               type="text"
               value={packet.out_interface || ''}
               onChange={(e) => updateField('out_interface', e.target.value)}
               className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-100 font-mono focus:border-emerald-500 focus:outline-none"
-              placeholder="Ex: ether1-wan / eth0"
+              placeholder="Ex: ether1, WAN ou eth0"
+              title="Aceita interface física (ether1), lista (WAN, LAN) ou ambos (ether1, WAN)"
             />
           </div>
         </div>
