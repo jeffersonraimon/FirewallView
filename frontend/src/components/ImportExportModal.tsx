@@ -40,6 +40,10 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
     setLoading(true);
     try {
       const res = await importRulesApi(importContent, importSyntax);
+      if ((!res.rules || res.rules.length === 0) && (!res.address_lists || Object.keys(res.address_lists).length === 0)) {
+        setErrorMsg('Nenhuma regra ou lista de endereços válida foi detectada no conteúdo informado. Verifique se o texto colado contém comandos válidos do firewall (ex: /ip firewall filter add ... ou export).');
+        return;
+      }
       onImportSuccess(res.rules, res.address_lists, res.detected_syntax);
       onClose();
     } catch (err: any) {

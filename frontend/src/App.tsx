@@ -250,7 +250,12 @@ export function App() {
     setRules(importedRules);
     setAddressLists(importedLists);
     setCurrentSyntax(detectedSyntax);
-    executeSimulation(packet, importedRules, importedLists);
+
+    const targetPacket = (!packet.src_ip && !packet.dst_ip) ? DEFAULT_PACKET : packet;
+    if (!packet.src_ip && !packet.dst_ip) {
+      setPacket(DEFAULT_PACKET);
+    }
+    executeSimulation(targetPacket, importedRules, importedLists);
   };
 
   return (

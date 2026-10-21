@@ -172,3 +172,26 @@ def test_output_flow_simulation():
     )
     res2 = sim.simulate(pkt_dns)
     assert res2.verdict == "ACCEPT"
+
+def test_routeros_oneliners_and_multiline():
+    raw_script = r"""
+    /ip firewall address-list add list=TEST_LIST address=192.168.10.0/24 comment="Office"
+    /ip firewall filter add chain=input action=accept protocol=tcp dst-port=22 comment="SSH Admin"
+    /ip firewall filter add chain=forward action=drop in-interface=ether1-wan comment=\
+        "Drop WAN invalid" connection-state=\
+        invalid
+    /ip firewall nat add chain=srcnat action=masquerade out-interface=ether1-wan
+    """
+    rules, addr_lists = parse_routeros_script(raw_script)
+    assert len(rules) == 3
+    assert "TEST_LIST" in addr_lists
+    assert rules[0].chain == "input"
+    assert rules[0].action == "accept"
+    assert rules[0].comment == "SSH Admin"
+    assert rules[1].chain == "forward"
+    assert rules[1].action == "drop"
+    assert rules[1].conditions.connection_state == ["invalid"]
+    assert rules[2].table == "nat"
+    assert rules[2].chain == "srcnat"
+    assert rules[2].action == "masquerade"
+
