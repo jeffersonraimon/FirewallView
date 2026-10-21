@@ -19,6 +19,24 @@ export const PacketSimulatorPanel: React.FC<PacketSimulatorPanelProps> = ({
   onToggleAutoSimulate,
   loading
 }) => {
+  const isTcp = packet.protocol.toLowerCase() === 'tcp';
+  const isPortApplicable = ['tcp', 'udp'].includes(packet.protocol.toLowerCase());
+
+  const handleProtocolChange = (newProto: string) => {
+    const updated: SimulationPacket = {
+      ...packet,
+      protocol: newProto
+    };
+    if (newProto.toLowerCase() !== 'tcp') {
+      updated.tcp_flags = [];
+    }
+    if (!['tcp', 'udp'].includes(newProto.toLowerCase())) {
+      updated.src_port = 0;
+      updated.dst_port = 0;
+    }
+    onChangePacket(updated);
+  };
+
   const updateField = (field: keyof SimulationPacket, value: any) => {
     onChangePacket({
       ...packet,
@@ -237,13 +255,21 @@ export const PacketSimulatorPanel: React.FC<PacketSimulatorPanelProps> = ({
             />
           </div>
           <div>
-            <label className="text-slate-400 block mb-1">Porta de Origem</label>
+            <label className="text-slate-400 block mb-1 flex items-center justify-between">
+              <span>Porta de Origem</span>
+              {!isPortApplicable && (
+                <span className="text-[10px] text-amber-400/80 font-mono">N/A ({packet.protocol.toUpperCase()})</span>
+              )}
+            </label>
             <input
               type="number"
-              value={packet.src_port || ''}
+              disabled={!isPortApplicable}
+              value={isPortApplicable ? (packet.src_port || '') : ''}
               onChange={(e) => updateField('src_port', parseInt(e.target.value) || 0)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-100 font-mono focus:border-cyan-500 focus:outline-none"
-              placeholder="Ex: 51234"
+              className={`w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-100 font-mono focus:border-cyan-500 focus:outline-none transition ${
+                !isPortApplicable ? 'opacity-40 cursor-not-allowed bg-slate-950/80 text-slate-500 border-slate-800' : ''
+              }`}
+              placeholder={isPortApplicable ? "Ex: 51234" : "Sem porta"}
             />
           </div>
           <div>
@@ -275,13 +301,21 @@ export const PacketSimulatorPanel: React.FC<PacketSimulatorPanelProps> = ({
             />
           </div>
           <div>
-            <label className="text-slate-400 block mb-1">Porta de Destino</label>
+            <label className="text-slate-400 block mb-1 flex items-center justify-between">
+              <span>Porta de Destino</span>
+              {!isPortApplicable && (
+                <span className="text-[10px] text-amber-400/80 font-mono">N/A ({packet.protocol.toUpperCase()})</span>
+              )}
+            </label>
             <input
               type="number"
-              value={packet.dst_port || ''}
+              disabled={!isPortApplicable}
+              value={isPortApplicable ? (packet.dst_port || '') : ''}
               onChange={(e) => updateField('dst_port', parseInt(e.target.value) || 0)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-100 font-mono focus:border-emerald-500 focus:outline-none"
-              placeholder="Ex: 80 / 443"
+              className={`w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-100 font-mono focus:border-emerald-500 focus:outline-none transition ${
+                !isPortApplicable ? 'opacity-40 cursor-not-allowed bg-slate-950/80 text-slate-500 border-slate-800' : ''
+              }`}
+              placeholder={isPortApplicable ? "Ex: 80 / 443" : "Sem porta"}
             />
           </div>
           <div>
@@ -306,7 +340,7 @@ export const PacketSimulatorPanel: React.FC<PacketSimulatorPanelProps> = ({
             <label className="text-slate-400 block mb-1">Protocolo</label>
             <select
               value={packet.protocol}
-              onChange={(e) => updateField('protocol', e.target.value)}
+              onChange={(e) => handleProtocolChange(e.target.value)}
               className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-100 font-mono focus:border-violet-500 focus:outline-none"
             >
               <option value="tcp">TCP</option>
@@ -393,22 +427,29 @@ export const PacketSimulatorPanel: React.FC<PacketSimulatorPanelProps> = ({
 
         {/* TCP Flags & Actions */}
         <div className="space-y-3 p-3 bg-slate-950/60 rounded-xl border border-slate-800/60 flex flex-col justify-between">
-          <div>
-            <span className="text-[11px] font-semibold text-amber-400 uppercase tracking-wider block mb-2">
-              TCP Flags
-            </span>
-            <div className="grid grid-cols-3 gap-1.5">
+          {/* Flags section (disabled when not TCP) */}
+          <div className={`transition ${!isTcp ? 'opacity-40' : ''}`}>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] font-semibold text-amber-400 uppercase tracking-wider block">
+                TCP Flags
+              </span>
+              {!isTcp && (
+                <span className="text-[10px] text-slate-500 font-mono italic">Apenas TCP</span>
+              )}
+            </div>
+            <div className={`grid grid-cols-3 gap-1.5 ${!isTcp ? 'pointer-events-none' : ''}`}>
               {['syn', 'ack', 'fin', 'rst', 'psh', 'urg'].map((flag) => {
-                const active = packet.tcp_flags.includes(flag);
+                const active = isTcp && packet.tcp_flags.includes(flag);
                 return (
                   <button
                     key={flag}
                     type="button"
+                    disabled={!isTcp}
                     onClick={() => toggleFlag(flag)}
                     className={`py-1 text-center uppercase font-mono text-[11px] rounded transition ${
                       active
                         ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 font-semibold'
-                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200'
+                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200 disabled:opacity-40 disabled:hover:bg-slate-800'
                     }`}
                   >
                     {flag}
@@ -418,13 +459,14 @@ export const PacketSimulatorPanel: React.FC<PacketSimulatorPanelProps> = ({
             </div>
           </div>
 
+          {/* Simulation Action Controls (always active) */}
           <div className="pt-2 border-t border-slate-800/80 flex flex-col gap-2">
-            <label className="flex items-center gap-2 cursor-pointer text-slate-400 select-none">
+            <label className="flex items-center gap-2 cursor-pointer text-slate-400 hover:text-slate-200 select-none">
               <input
                 type="checkbox"
                 checked={autoSimulate}
                 onChange={onToggleAutoSimulate}
-                className="rounded bg-slate-900 border-slate-700 text-cyan-500 focus:ring-0"
+                className="rounded bg-slate-900 border-slate-700 text-cyan-500 focus:ring-0 cursor-pointer"
               />
               <span>Simulação Automática</span>
             </label>
@@ -432,7 +474,7 @@ export const PacketSimulatorPanel: React.FC<PacketSimulatorPanelProps> = ({
             <button
               onClick={onSimulate}
               disabled={loading}
-              className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-gradient-to-r from-cyan-600 to-emerald-600 hover:from-cyan-500 hover:to-emerald-500 text-white font-medium rounded-lg shadow-lg shadow-cyan-950/50 transition disabled:opacity-50"
+              className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-gradient-to-r from-cyan-600 to-emerald-600 hover:from-cyan-500 hover:to-emerald-500 text-white font-medium rounded-lg shadow-lg shadow-cyan-950/50 transition disabled:opacity-50 cursor-pointer"
             >
               <Play className="w-4 h-4 fill-white" />
               <span>{loading ? 'Simulando...' : 'Simular Pacote'}</span>

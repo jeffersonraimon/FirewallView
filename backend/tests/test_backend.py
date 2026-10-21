@@ -195,3 +195,54 @@ def test_routeros_oneliners_and_multiline():
     assert rules[2].chain == "srcnat"
     assert rules[2].action == "masquerade"
 
+def test_routeros_port_parameter_and_protocol_filtering():
+    raw_script = """
+    /ip firewall filter add action=accept chain=input comment=ACCEPT-WIREGUARD port=13231 protocol=udp
+    /ip firewall filter add action=drop chain=input
+    """
+    rules, addr_lists = parse_routeros_script(raw_script)
+    assert len(rules) == 2
+    assert rules[0].conditions.port == "13231"
+
+    sim = FirewallSimulator(rules, addr_lists)
+
+    # 1. Packet to port 53 (DNS) must NOT match WireGuard port 13231 -> should be dropped
+    pkt_dns = SimulationPacket(
+        src_ip="4.228.31.150",
+        dst_ip="45.7.2.231",
+        src_port=54321,
+        dst_port=53,
+        protocol="udp",
+        flow_type="input",
+        is_router_traffic=True
+    )
+    res_dns = sim.simulate(pkt_dns)
+    assert res_dns.verdict == "DROP"
+
+    # 2. Packet to port 13231 (WireGuard) matches and is ACCEPTED
+    pkt_wg = SimulationPacket(
+        src_ip="4.228.31.150",
+        dst_ip="45.7.2.231",
+        src_port=54321,
+        dst_port=13231,
+        protocol="udp",
+        flow_type="input",
+        is_router_traffic=True
+    )
+    res_wg = sim.simulate(pkt_wg)
+    assert res_wg.verdict == "ACCEPT"
+
+    # 3. ICMP packet must NOT match port-specific rule
+    pkt_icmp = SimulationPacket(
+        src_ip="4.228.31.150",
+        dst_ip="45.7.2.231",
+        src_port=0,
+        dst_port=0,
+        protocol="icmp",
+        flow_type="input",
+        is_router_traffic=True
+    )
+    res_icmp = sim.simulate(pkt_icmp)
+    assert res_icmp.verdict == "DROP"
+
+

@@ -6,6 +6,7 @@ export interface RuleCondition {
   protocol?: string;
   src_port?: string;
   dst_port?: string;
+  port?: string;
   in_interface?: string;
   out_interface?: string;
   connection_state?: string[];
@@ -18,6 +19,7 @@ export interface RuleCondition {
   negate_protocol?: boolean;
   negate_src_port?: boolean;
   negate_dst_port?: boolean;
+  negate_port?: boolean;
   negate_in_interface?: boolean;
   negate_out_interface?: boolean;
 }

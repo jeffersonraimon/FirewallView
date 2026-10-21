@@ -307,6 +307,11 @@ export const RulesTable: React.FC<RulesTableProps> = ({
                               dport:{rule.conditions.negate_dst_port ? '!' : ''}{rule.conditions.dst_port}
                             </span>
                           )}
+                          {rule.conditions.port && (
+                            <span className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-amber-300 font-semibold">
+                              port:{rule.conditions.negate_port ? '!' : ''}{rule.conditions.port}
+                            </span>
+                          )}
 
                           {/* Interfaces */}
                           {rule.conditions.in_interface && (

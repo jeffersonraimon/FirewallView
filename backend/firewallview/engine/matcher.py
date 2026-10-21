@@ -196,7 +196,25 @@ def evaluate_rule_match(
             reasons.append(f"Dst IP {packet.dst_ip} is NOT in address list '{list_name}'")
             return False, reasons
 
-    # 6. Source Port (only applies if protocol is tcp or udp)
+    # 6. Any Port (port= in MikroTik, matches either src or dst port)
+    if c.port and c.port.strip():
+        if packet.protocol.lower() in ["tcp", "udp"]:
+            src_m = is_port_matching(packet.src_port or 0, c.port.strip())
+            dst_m = is_port_matching(packet.dst_port or 0, c.port.strip())
+            matched = src_m or dst_m
+            if c.negate_port:
+                matched = not matched
+
+            if matched:
+                reasons.append(f"Port (src or dst) matches {c.port}")
+            else:
+                reasons.append(f"Port mismatch: neither src ({packet.src_port}) nor dst ({packet.dst_port}) matches {c.port}")
+                return False, reasons
+        else:
+            reasons.append(f"Port mismatch: protocol {packet.protocol} has no ports, rule requires port {c.port}")
+            return False, reasons
+
+    # 7. Source Port (only applies if protocol is tcp or udp)
     if c.src_port and c.src_port.strip():
         if packet.protocol.lower() in ["tcp", "udp"]:
             pkt_port = packet.src_port if packet.src_port is not None else 0
@@ -210,9 +228,10 @@ def evaluate_rule_match(
                 reasons.append(f"Src Port mismatch: {pkt_port} does not match {c.src_port}")
                 return False, reasons
         else:
-            reasons.append(f"Src Port ignored for protocol {packet.protocol}")
+            reasons.append(f"Src Port mismatch: protocol {packet.protocol} has no ports, rule requires port {c.src_port}")
+            return False, reasons
 
-    # 7. Destination Port
+    # 8. Destination Port
     if c.dst_port and c.dst_port.strip():
         if packet.protocol.lower() in ["tcp", "udp"]:
             pkt_port = packet.dst_port if packet.dst_port is not None else 0
@@ -226,7 +245,8 @@ def evaluate_rule_match(
                 reasons.append(f"Dst Port mismatch: {pkt_port} does not match {c.dst_port}")
                 return False, reasons
         else:
-            reasons.append(f"Dst Port ignored for protocol {packet.protocol}")
+            reasons.append(f"Dst Port mismatch: protocol {packet.protocol} has no ports, rule requires port {c.dst_port}")
+            return False, reasons
 
     # 8. In-Interface
     if c.in_interface and c.in_interface.strip():
@@ -264,7 +284,10 @@ def evaluate_rule_match(
             return False, reasons
 
     # 11. TCP Flags
-    if c.tcp_flags and len(c.tcp_flags) > 0 and packet.protocol.lower() == "tcp":
+    if c.tcp_flags and len(c.tcp_flags) > 0:
+        if packet.protocol.lower() != "tcp":
+            reasons.append(f"TCP Flags mismatch: packet protocol is {packet.protocol}, rule requires TCP flags {c.tcp_flags}")
+            return False, reasons
         pkt_flags = set(f.strip().lower() for f in packet.tcp_flags)
         flag_mismatch = False
         for flag_req in c.tcp_flags:

@@ -232,6 +232,13 @@ def parse_routeros_script(content: str) -> Tuple[List[FirewallRule], Dict[str, A
                     dst_port = dst_port[1:]
                 cond.dst_port = dst_port
 
+            any_port = props.get("port")
+            if any_port:
+                if any_port.startswith("!"):
+                    cond.negate_port = True
+                    any_port = any_port[1:]
+                cond.port = any_port
+
             # Interfaces
             in_iface = props.get("in-interface") or props.get("in-interface-list")
             if in_iface:

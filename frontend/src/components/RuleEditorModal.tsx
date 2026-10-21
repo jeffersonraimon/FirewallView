@@ -37,9 +37,12 @@ export const RuleEditorModal: React.FC<RuleEditorModalProps> = ({
   const [dstList, setDstList] = useState('');
   const [srcPort, setSrcPort] = useState('');
   const [dstPort, setDstPort] = useState('');
+  const [anyPort, setAnyPort] = useState('');
   const [inIface, setInIface] = useState('');
   const [outIface, setOutIface] = useState('');
   const [connStates, setConnStates] = useState<string[]>([]);
+
+  const isPortApplicable = !protocol || ['tcp', 'udp', 'any', ''].includes(protocol.trim().toLowerCase());
 
   // Configuration definitions by manufacturer
   const manufacturerConfigs: Record<string, any> = {
@@ -193,6 +196,7 @@ export const RuleEditorModal: React.FC<RuleEditorModalProps> = ({
         setDstList(ruleToEdit.conditions.dst_address_list || '');
         setSrcPort(ruleToEdit.conditions.src_port || '');
         setDstPort(ruleToEdit.conditions.dst_port || '');
+        setAnyPort(ruleToEdit.conditions.port || '');
         setInIface(ruleToEdit.conditions.in_interface || '');
         setOutIface(ruleToEdit.conditions.out_interface || '');
         setConnStates(ruleToEdit.conditions.connection_state || []);
@@ -214,6 +218,7 @@ export const RuleEditorModal: React.FC<RuleEditorModalProps> = ({
         setDstList('');
         setSrcPort('');
         setDstPort('');
+        setAnyPort('');
         setInIface('');
         setOutIface('');
         setConnStates([]);
@@ -271,8 +276,9 @@ export const RuleEditorModal: React.FC<RuleEditorModalProps> = ({
         dst_address: dstAddress.trim() || undefined,
         src_address_list: srcList || undefined,
         dst_address_list: dstList || undefined,
-        src_port: srcPort.trim() || undefined,
-        dst_port: dstPort.trim() || undefined,
+        src_port: (isPortApplicable && srcPort.trim()) ? srcPort.trim() : undefined,
+        dst_port: (isPortApplicable && dstPort.trim()) ? dstPort.trim() : undefined,
+        port: (isPortApplicable && anyPort.trim()) ? anyPort.trim() : undefined,
         in_interface: inIface.trim() || undefined,
         out_interface: outIface.trim() || undefined,
         connection_state: connStates.length > 0 ? connStates : undefined
@@ -432,8 +438,8 @@ export const RuleEditorModal: React.FC<RuleEditorModalProps> = ({
               Critérios de Correspondência (Matchers)
             </span>
 
-            {/* Protocol */}
-            <div className="grid grid-cols-3 gap-3">
+            {/* Protocol & Ports */}
+            <div className={`grid ${selectedSyntax === 'routeros' ? 'grid-cols-4' : 'grid-cols-3'} gap-3`}>
               <div>
                 <label className="text-slate-400 block mb-1">Protocolo</label>
                 <input
@@ -445,25 +451,56 @@ export const RuleEditorModal: React.FC<RuleEditorModalProps> = ({
                 />
               </div>
               <div>
-                <label className="text-slate-400 block mb-1">Src Port</label>
+                <label className="text-slate-400 block mb-1 flex items-center justify-between">
+                  <span>Src Port</span>
+                  {!isPortApplicable && <span className="text-[10px] text-amber-400/80">N/A</span>}
+                </label>
                 <input
                   type="text"
-                  value={srcPort}
+                  disabled={!isPortApplicable}
+                  value={isPortApplicable ? srcPort : ''}
                   onChange={(e) => setSrcPort(e.target.value)}
-                  placeholder="Ex: 1024-65535"
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 font-mono text-slate-100 focus:border-cyan-500 focus:outline-none"
+                  placeholder={isPortApplicable ? "Ex: 1024-65535" : "N/A"}
+                  className={`w-full bg-slate-900 border border-slate-700 rounded-lg p-2 font-mono text-slate-100 focus:border-cyan-500 focus:outline-none transition ${
+                    !isPortApplicable ? 'opacity-40 cursor-not-allowed bg-slate-950 text-slate-600' : ''
+                  }`}
                 />
               </div>
               <div>
-                <label className="text-slate-400 block mb-1">Dst Port</label>
+                <label className="text-slate-400 block mb-1 flex items-center justify-between">
+                  <span>Dst Port</span>
+                  {!isPortApplicable && <span className="text-[10px] text-amber-400/80">N/A</span>}
+                </label>
                 <input
                   type="text"
-                  value={dstPort}
+                  disabled={!isPortApplicable}
+                  value={isPortApplicable ? dstPort : ''}
                   onChange={(e) => setDstPort(e.target.value)}
-                  placeholder="Ex: 80, 443"
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 font-mono text-slate-100 focus:border-cyan-500 focus:outline-none"
+                  placeholder={isPortApplicable ? "Ex: 80, 443" : "N/A"}
+                  className={`w-full bg-slate-900 border border-slate-700 rounded-lg p-2 font-mono text-slate-100 focus:border-cyan-500 focus:outline-none transition ${
+                    !isPortApplicable ? 'opacity-40 cursor-not-allowed bg-slate-950 text-slate-600' : ''
+                  }`}
                 />
               </div>
+              {selectedSyntax === 'routeros' && (
+                <div>
+                  <label className="text-slate-400 block mb-1 flex items-center justify-between" title="MikroTik port= (compara tanto porta de origem quanto de destino)">
+                    <span>Port (Src ou Dst)</span>
+                    {!isPortApplicable && <span className="text-[10px] text-amber-400/80">N/A</span>}
+                  </label>
+                  <input
+                    type="text"
+                    disabled={!isPortApplicable}
+                    value={isPortApplicable ? anyPort : ''}
+                    onChange={(e) => setAnyPort(e.target.value)}
+                    placeholder={isPortApplicable ? "Ex: 13231" : "N/A"}
+                    title="MikroTik port= (compara tanto porta de origem quanto de destino)"
+                    className={`w-full bg-slate-900 border border-slate-700 rounded-lg p-2 font-mono text-slate-100 focus:border-cyan-500 focus:outline-none transition ${
+                      !isPortApplicable ? 'opacity-40 cursor-not-allowed bg-slate-950 text-slate-600' : ''
+                    }`}
+                  />
+                </div>
+              )}
             </div>
 
             {/* Addresses & Lists (Dynamic Label) */}
