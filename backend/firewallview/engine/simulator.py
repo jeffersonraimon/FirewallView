@@ -99,6 +99,7 @@ class FirewallSimulator:
         final_verdict = "ACCEPT"
         final_action = "ACCEPT (Default Policy)"
         terminal_rule_id: Optional[str] = None
+        accepted_filter_rule_id: Optional[str] = None
         is_terminated = False
 
         for stage_id, stage_title, table, chain in pipeline:
@@ -139,11 +140,18 @@ class FirewallSimulator:
                 final_action = verdict_from_chain
                 terminal_rule_id = term_id
                 break
+            elif verdict_from_chain == "ACCEPT" and table.lower() == "filter":
+                accepted_filter_rule_id = term_id
 
         # If not terminated by explicit rule, check default behavior
         if not is_terminated:
-            final_verdict = "ACCEPT"
-            final_action = "ACCEPT (Default Policy)"
+            if accepted_filter_rule_id:
+                final_verdict = "ACCEPT"
+                final_action = f"ACCEPT (Rule #{accepted_filter_rule_id})"
+                terminal_rule_id = accepted_filter_rule_id
+            else:
+                final_verdict = "ACCEPT"
+                final_action = "ACCEPT (Default Policy)"
             flow_path.append("delivered")
         elif final_verdict in ["DROP", "REJECT"]:
             flow_path.append("dropped")

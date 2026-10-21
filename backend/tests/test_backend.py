@@ -435,6 +435,150 @@ def test_junos_advanced_features_and_simulation():
     res_telnet = sim.simulate(pkt_telnet)
     assert res_telnet.verdict == "DROP"
 
+def test_dmos_parser_and_simulation():
+    from firewallview.parsers.dmos import parse_dmos_script
+    from firewallview.exporters.dmos import export_to_dmos
+
+    raw_script = """
+    access-list
+     protection
+      cpu ACL-PADRAO-CPU
+     !
+     acl-profile cpu l3 ACL-PADRAO-CPU
+      priority 0
+      access-list-entry 10
+       description PERMITE-ARP
+       match ethertype arp
+       action permit
+      !
+      access-list-entry 11
+       description PERMITE-VRRP
+       match ip-protocol 112
+       action permit
+      !
+      access-list-entry 40
+       description PERMITE-OSPF
+       match ip-protocol 89
+       action permit
+      !
+      access-list-entry 51
+       description PERMITE-BGP
+       match destination-port bgp
+       action permit
+      !
+      access-list-entry 201
+       description PERMITE-SSH-NOC
+       match source-ipv4-address 198.51.100.0/24
+       match destination-port ssh
+       action permit
+      !
+      access-list-entry 210
+       description PERMITE-SNMP-MGMT
+       match source-ipv4-address 192.0.2.50/32
+       match destination-port snmp
+       action permit
+      !
+      access-list-entry 220
+       description PERMITE-ICMP
+       match ip-protocol icmp
+       action permit
+      !
+      access-list-entry 500
+       description NEGA-TUDO
+       action deny
+      !
+     !
+    """
+
+    rules, addr_lists = parse_dmos_script(raw_script)
+    assert len(rules) == 8
+
+    # All rules should be assigned to 'input' chain due to CPU protection profile
+    for r in rules:
+        assert r.chain == "input"
+        assert r.table == "filter"
+
+    # Verify BGP destination-port was resolved from 'bgp' to '179'
+    bgp_rule = next(r for r in rules if "PERMITE-BGP" in r.comment)
+    assert bgp_rule.conditions.dst_port == "179"
+    assert bgp_rule.action == "accept"
+
+    # Verify SSH rule
+    ssh_rule = next(r for r in rules if "PERMITE-SSH-NOC" in r.comment)
+    assert ssh_rule.conditions.src_address == "198.51.100.0/24"
+    assert ssh_rule.conditions.dst_port == "22"
+
+    # Verify deny rule
+    deny_rule = next(r for r in rules if "NEGA-TUDO" in r.comment)
+    assert deny_rule.action == "drop"
+
+    sim = FirewallSimulator(rules, addr_lists)
+
+    # 1. OSPF packet (proto 89) should match PERMITE-OSPF and be ACCEPTED
+    pkt_ospf = SimulationPacket(
+        src_ip="192.0.2.10",
+        dst_ip="224.0.0.5",
+        src_port=0,
+        dst_port=0,
+        protocol="ospf",
+        flow_type="input",
+        is_router_traffic=True
+    )
+    res_ospf = sim.simulate(pkt_ospf)
+    assert res_ospf.verdict == "ACCEPT"
+    assert res_ospf.matched_rule_id == "40"
+
+    # 2. VRRP packet (proto 112) should match PERMITE-VRRP and be ACCEPTED
+    pkt_vrrp = SimulationPacket(
+        src_ip="192.0.2.1",
+        dst_ip="224.0.0.18",
+        src_port=0,
+        dst_port=0,
+        protocol="vrrp",
+        flow_type="input",
+        is_router_traffic=True
+    )
+    res_vrrp = sim.simulate(pkt_vrrp)
+    assert res_vrrp.verdict == "ACCEPT"
+    assert res_vrrp.matched_rule_id == "11"
+
+    # 3. Authorized SSH from NOC should be ACCEPTED
+    pkt_ssh_ok = SimulationPacket(
+        src_ip="198.51.100.15",
+        dst_ip="192.0.2.1",
+        src_port=54321,
+        dst_port=22,
+        protocol="tcp",
+        flow_type="input",
+        is_router_traffic=True
+    )
+    res_ssh_ok = sim.simulate(pkt_ssh_ok)
+    assert res_ssh_ok.verdict == "ACCEPT"
+    assert res_ssh_ok.matched_rule_id == "201"
+
+    # 4. Unauthorized SSH from outside should hit NEGA-TUDO and be DROPPED
+    pkt_ssh_bad = SimulationPacket(
+        src_ip="203.0.113.88",
+        dst_ip="192.0.2.1",
+        src_port=54321,
+        dst_port=22,
+        protocol="tcp",
+        flow_type="input",
+        is_router_traffic=True
+    )
+    res_ssh_bad = sim.simulate(pkt_ssh_bad)
+    assert res_ssh_bad.verdict == "DROP"
+    assert res_ssh_bad.matched_rule_id == "500"
+
+    # 5. Test Exporter to DmOS
+    exported_text = export_to_dmos(rules, addr_lists)
+    assert "access-list" in exported_text
+    assert "protection" in exported_text
+    assert "cpu ACL-PADRAO-CPU" in exported_text
+    assert "action permit" in exported_text
+    assert "action deny" in exported_text
+
+
 
 
 

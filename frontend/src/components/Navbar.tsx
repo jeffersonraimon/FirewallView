@@ -57,6 +57,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     { id: 'nftables', name: 'Linux nftables', icon: '🛡️' },
     { id: 'cisco', name: 'Cisco IOS / ASA', icon: '🏢' },
     { id: 'junos', name: 'Juniper Junos OS', icon: '🌲' },
+    { id: 'dmos', name: 'Datacom DmOS', icon: '🇧🇷' },
   ];
 
   const presets = [
@@ -64,6 +65,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     { id: 'iptables', title: 'Linux iptables Web & DMZ', desc: 'Filtro INPUT/FORWARD e conjuntos ipset' },
     { id: 'cisco', title: 'Cisco Edge Enterprise ACL', desc: 'Extended ACL com object-groups de rede' },
     { id: 'junos', title: 'Juniper Junos Edge Filter', desc: 'Filter inet com prefix-list e termos' },
+    { id: 'dmos', title: 'Datacom DmOS CPU CoPP', desc: 'Protection CPU ACL com matches L3/L4' },
   ];
 
   return (

@@ -324,7 +324,7 @@ export function App() {
 
       {/* Footer */}
       <footer className="border-t border-slate-900 bg-slate-950 py-4 px-6 text-center text-xs text-slate-500">
-        <p>FirewallView &bull; Simulador de Políticas de Segurança de Rede Multi-Plataforma &bull; MikroTik RouterOS, Linux iptables/nftables, Cisco ACL, Juniper Junos</p>
+        <p>FirewallView &bull; Simulador de Políticas de Segurança de Rede Multi-Plataforma &bull; MikroTik RouterOS, Linux iptables/nftables, Cisco ACL, Juniper Junos, Datacom DmOS</p>
       </footer>
 
       {/* Modals */}

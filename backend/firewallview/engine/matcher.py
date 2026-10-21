@@ -58,6 +58,25 @@ JUNOS_PORT_NAMES = {
     "sip": 5060,
 }
 
+PROTOCOL_MAP = {
+    "1": "icmp",
+    "6": "tcp",
+    "17": "udp",
+    "46": "rsvp",
+    "47": "gre",
+    "50": "esp",
+    "51": "ah",
+    "58": "icmp6",
+    "89": "ospf",
+    "112": "vrrp",
+    "ipv6-icmp": "icmp6",
+    "icmpv6": "icmp6",
+}
+
+def normalize_protocol_name(proto: str) -> str:
+    cleaned = proto.strip().lower()
+    return PROTOCOL_MAP.get(cleaned, cleaned)
+
 def is_ip_matching(packet_ip_str: str, condition_str: str) -> bool:
     """Checks if packet_ip matches single IP, CIDR, range, or comma-separated list."""
     try:
@@ -179,7 +198,8 @@ def evaluate_rule_match(
         if cond_proto not in ["any", "all", "ip"]:
             protos = [p.strip().lower() for p in cond_proto.split(",") if p.strip()]
             proto_match = any(
-                p == pkt_proto or (p in ["icmp", "icmp6"] and pkt_proto in ["icmp", "icmp6"])
+                normalize_protocol_name(p) == normalize_protocol_name(pkt_proto) or
+                (normalize_protocol_name(p) in ["icmp", "icmp6"] and normalize_protocol_name(pkt_proto) in ["icmp", "icmp6"])
                 for p in protos
             )
             if c.negate_protocol:

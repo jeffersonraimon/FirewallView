@@ -171,6 +171,24 @@ export const RuleEditorModal: React.FC<RuleEditorModalProps> = ({
       listLabel: 'prefix-list',
       chainLabel: 'Nome do Filtro (filter)',
       commentLabel: 'Nome do Termo (term <nome>)',
+    },
+    dmos: {
+      name: 'Datacom DmOS',
+      icon: '🇧🇷',
+      tableLabel: 'Tipo de ACL',
+      tables: [
+        { value: 'filter', label: 'acl-profile cpu l3 / protection' }
+      ],
+      chainsForTable: {
+        filter: ['input', 'ACL-PADRAO-CPU', 'forward'],
+      },
+      actions: [
+        { value: 'accept', label: 'permit (Permitir)' },
+        { value: 'drop', label: 'deny (Bloquear)' },
+      ],
+      listLabel: 'prefix-list',
+      chainLabel: 'Perfil / Aplicação (Chain)',
+      commentLabel: 'description <comentário>',
     }
   };
 
@@ -325,6 +343,7 @@ export const RuleEditorModal: React.FC<RuleEditorModalProps> = ({
               <option value="nftables">🛡️ Linux nftables</option>
               <option value="cisco">🏢 Cisco IOS / ASA</option>
               <option value="junos">🌲 Juniper Junos OS</option>
+              <option value="dmos">🇧🇷 Datacom DmOS</option>
             </select>
           </div>
 

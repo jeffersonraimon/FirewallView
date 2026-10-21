@@ -15,11 +15,13 @@ from firewallview.parsers.iptables import parse_iptables_script
 from firewallview.parsers.nftables import parse_nftables_script
 from firewallview.parsers.cisco import parse_cisco_acl
 from firewallview.parsers.junos import parse_junos_script
+from firewallview.parsers.dmos import parse_dmos_script
 from firewallview.exporters.routeros import export_to_routeros
 from firewallview.exporters.iptables import export_to_iptables
 from firewallview.exporters.nftables import export_to_nftables
 from firewallview.exporters.cisco import export_to_cisco
 from firewallview.exporters.junos import export_to_junos
+from firewallview.exporters.dmos import export_to_dmos
 from firewallview.samples.presets import get_preset
 
 app = FastAPI(title="FirewallView API", version="1.0.0")
@@ -68,6 +70,8 @@ def simulate_packet(req: SimulationRequest):
 
 def detect_syntax(content: str) -> str:
     content_lower = content.lower()
+    if "acl-profile" in content_lower or "access-list-entry" in content_lower or ("protection" in content_lower and "cpu" in content_lower):
+        return "dmos"
     if "prefix-list" in content_lower or "term " in content_lower or "then accept" in content_lower or "then discard" in content_lower or "family inet" in content_lower:
         return "junos"
     if "/ip firewall" in content_lower or "/ipv6 firewall" in content_lower:
@@ -89,7 +93,9 @@ def import_rules(req: ImportRequest):
     if syntax == "auto":
         syntax = detect_syntax(req.content)
 
-    if syntax in ["junos", "juniper"]:
+    if syntax in ["dmos", "datacom"]:
+        rules, addr_lists = parse_dmos_script(req.content)
+    elif syntax in ["junos", "juniper"]:
         rules, addr_lists = parse_junos_script(req.content)
     elif syntax == "routeros":
         rules, addr_lists = parse_routeros_script(req.content)
@@ -113,7 +119,9 @@ def import_rules(req: ImportRequest):
 @app.post("/api/export")
 def export_rules(req: ExportRequest):
     syntax = req.syntax.lower()
-    if syntax in ["junos", "juniper"]:
+    if syntax in ["dmos", "datacom"]:
+        text = export_to_dmos(req.rules, req.address_lists)
+    elif syntax in ["junos", "juniper"]:
         text = export_to_junos(req.rules, req.address_lists)
     elif syntax == "routeros":
         text = export_to_routeros(req.rules, req.address_lists)

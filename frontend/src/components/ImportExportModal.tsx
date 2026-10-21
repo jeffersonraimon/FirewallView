@@ -79,7 +79,8 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
       iptables: 'sh',
       nftables: 'nft',
       cisco: 'txt',
-      junos: 'conf'
+      junos: 'conf',
+      dmos: 'cfg'
     };
     const ext = extensions[exportSyntax] || 'txt';
     const blob = new Blob([exportedContent], { type: 'text/plain;charset=utf-8' });
@@ -171,6 +172,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
                     <option value="nftables">nftables</option>
                     <option value="cisco">Cisco ACL / ASA</option>
                     <option value="junos">Juniper Junos OS</option>
+                    <option value="dmos">Datacom DmOS</option>
                   </select>
                 </div>
 
@@ -225,7 +227,8 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
                       { id: 'iptables', label: 'iptables & ipset' },
                       { id: 'nftables', label: 'nftables' },
                       { id: 'cisco', label: 'Cisco ACL' },
-                      { id: 'junos', label: 'Juniper Junos' }
+                      { id: 'junos', label: 'Juniper Junos' },
+                      { id: 'dmos', label: 'Datacom DmOS' }
                     ].map((item) => (
                       <button
                         key={item.id}

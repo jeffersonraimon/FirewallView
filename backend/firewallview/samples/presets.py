@@ -5,6 +5,7 @@ from firewallview.parsers.routeros import parse_routeros_script
 from firewallview.parsers.iptables import parse_iptables_script
 from firewallview.parsers.cisco import parse_cisco_acl
 from firewallview.parsers.junos import parse_junos_script
+from firewallview.parsers.dmos import parse_dmos_script
 
 PRESET_ROUTEROS = """
 /ip firewall address-list
@@ -141,9 +142,62 @@ firewall {
 }
 """
 
+PRESET_DMOS = """
+access-list
+ protection
+  cpu ACL-PADRAO-CPU
+ !
+ acl-profile cpu l3 ACL-PADRAO-CPU
+  priority 0
+  access-list-entry 10
+   description PERMITE-ARP
+   match ethertype arp
+   action permit
+  !
+  access-list-entry 11
+   description PERMITE-VRRP
+   match ip-protocol 112
+   action permit
+  !
+  access-list-entry 20
+   description PERMITE-OSPF
+   match ip-protocol 89
+   action permit
+  !
+  access-list-entry 30
+   description PERMITE-BGP
+   match destination-port bgp
+   action permit
+  !
+  access-list-entry 40
+   description PERMITE-SSH-ADMIN
+   match source-ipv4-address 198.51.100.0/24
+   match destination-port ssh
+   action permit
+  !
+  access-list-entry 50
+   description PERMITE-SNMP-NOC
+   match source-ipv4-address 192.0.2.0/24
+   match destination-port snmp
+   action permit
+  !
+  access-list-entry 60
+   description PERMITE-ICMP
+   match ip-protocol icmp
+   action permit
+  !
+  access-list-entry 500
+   description NEGA-TUDO
+   action deny
+  !
+ !
+"""
+
 def get_preset(name: str) -> Tuple[List[FirewallRule], Dict[str, AddressList]]:
     name_clean = name.lower()
-    if "junos" in name_clean or "juniper" in name_clean:
+    if "dmos" in name_clean or "datacom" in name_clean:
+        return parse_dmos_script(PRESET_DMOS)
+    elif "junos" in name_clean or "juniper" in name_clean:
         return parse_junos_script(PRESET_JUNOS)
     elif "cisco" in name_clean:
         return parse_cisco_acl(PRESET_CISCO)
