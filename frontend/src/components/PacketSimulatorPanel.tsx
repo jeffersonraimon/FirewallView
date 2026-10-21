@@ -21,6 +21,9 @@ export const PacketSimulatorPanel: React.FC<PacketSimulatorPanelProps> = ({
 }) => {
   const isTcp = packet.protocol.toLowerCase() === 'tcp';
   const isPortApplicable = ['tcp', 'udp'].includes(packet.protocol.toLowerCase());
+  const flowType = packet.flow_type || (packet.is_router_traffic ? 'input' : 'forward');
+  const isInputFlow = flowType === 'input';
+  const isOutputFlow = flowType === 'output';
 
   const handleProtocolChange = (newProto: string) => {
     const updated: SimulationPacket = {
@@ -273,14 +276,19 @@ export const PacketSimulatorPanel: React.FC<PacketSimulatorPanelProps> = ({
             />
           </div>
           <div>
-            <label className="text-slate-400 block mb-1">In-Interface / List</label>
+            <label className="text-slate-400 block mb-1 flex items-center justify-between">
+              <span>{isOutputFlow ? 'Out-Interface / List' : 'In-Interface / List'}</span>
+              <span className="text-[10px] text-cyan-400/80 font-mono">
+                {isOutputFlow ? 'Saída Roteador' : 'Entrada'}
+              </span>
+            </label>
             <input
               type="text"
-              value={packet.in_interface || ''}
-              onChange={(e) => updateField('in_interface', e.target.value)}
+              value={(isOutputFlow ? packet.out_interface : packet.in_interface) || ''}
+              onChange={(e) => updateField(isOutputFlow ? 'out_interface' : 'in_interface', e.target.value)}
               className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-100 font-mono focus:border-cyan-500 focus:outline-none"
-              placeholder="Ex: ether2, LAN ou ether1, WAN"
-              title="Aceita interface física (ether1), lista (WAN, LAN) ou ambos (ether1, WAN)"
+              placeholder={isOutputFlow ? "Ex: ether1, WAN ou eth0" : "Ex: ether2, LAN ou ether1, WAN"}
+              title="Interface física ou lista de interface (ex: WAN, LAN)"
             />
           </div>
         </div>
@@ -319,14 +327,30 @@ export const PacketSimulatorPanel: React.FC<PacketSimulatorPanelProps> = ({
             />
           </div>
           <div>
-            <label className="text-slate-400 block mb-1">Out-Interface / List</label>
+            <label className="text-slate-400 block mb-1 flex items-center justify-between">
+              <span>{isInputFlow ? 'In-Interface no Roteador' : 'Out-Interface / List'}</span>
+              <span className="text-[10px] text-emerald-400 font-mono">
+                {isInputFlow ? 'Destino (Local)' : 'Saída'}
+              </span>
+            </label>
             <input
               type="text"
-              value={packet.out_interface || ''}
-              onChange={(e) => updateField('out_interface', e.target.value)}
+              value={(isInputFlow ? packet.in_interface : packet.out_interface) || ''}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (isInputFlow) {
+                  onChangePacket({
+                    ...packet,
+                    in_interface: val,
+                    out_interface: ''
+                  });
+                } else {
+                  updateField('out_interface', val);
+                }
+              }}
               className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-100 font-mono focus:border-emerald-500 focus:outline-none"
-              placeholder="Ex: ether1, WAN ou eth0"
-              title="Aceita interface física (ether1), lista (WAN, LAN) ou ambos (ether1, WAN)"
+              placeholder={isInputFlow ? "Ex: WAN, ether1 ou ether1, WAN" : "Ex: ether1, WAN ou eth0"}
+              title={isInputFlow ? "Interface por onde o pacote chega ao roteador (In-Interface)" : "Interface por onde o pacote sai (Out-Interface)"}
             />
           </div>
         </div>

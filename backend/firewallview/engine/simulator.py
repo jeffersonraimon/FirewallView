@@ -44,6 +44,13 @@ class FirewallSimulator:
         if packet.is_router_traffic and flow_type == "forward":
             flow_type = "input"
 
+        # In local input flow, if in_interface was not set but out_interface was provided, fallback to out_interface
+        if flow_type == "input" and not current_packet.in_interface and current_packet.out_interface:
+            current_packet.in_interface = current_packet.out_interface
+        # In local output flow, if out_interface was not set but in_interface was provided, fallback to in_interface
+        if flow_type == "output" and not current_packet.out_interface and current_packet.in_interface:
+            current_packet.out_interface = current_packet.in_interface
+
         # Pipeline stages in canonical order:
         # Stage definition: (stage_id, title, table, chain)
         if flow_type == "input":
