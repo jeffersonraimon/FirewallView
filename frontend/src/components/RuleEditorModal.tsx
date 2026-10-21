@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, Plus, Shield } from 'lucide-react';
+import { X, Save, Plus, Shield, Layers, HelpCircle } from 'lucide-react';
 import { FirewallRule, AddressList } from '../types';
 
 interface RuleEditorModalProps {
@@ -19,8 +19,10 @@ export const RuleEditorModal: React.FC<RuleEditorModalProps> = ({
   addressLists,
   currentSyntax = 'routeros'
 }) => {
+  const [selectedSyntax, setSelectedSyntax] = useState<string>(currentSyntax);
   const [table, setTable] = useState('filter');
   const [chain, setChain] = useState('forward');
+  const [isCustomChain, setIsCustomChain] = useState(false);
   const [action, setAction] = useState('accept');
   const [targetChain, setTargetChain] = useState('');
   const [natAddresses, setNatAddresses] = useState('');
@@ -39,50 +41,207 @@ export const RuleEditorModal: React.FC<RuleEditorModalProps> = ({
   const [outIface, setOutIface] = useState('');
   const [connStates, setConnStates] = useState<string[]>([]);
 
-  useEffect(() => {
-    if (ruleToEdit) {
-      setTable(ruleToEdit.table);
-      setChain(ruleToEdit.chain);
-      setAction(ruleToEdit.action);
-      setTargetChain(ruleToEdit.target_chain || '');
-      setNatAddresses(ruleToEdit.nat_to_addresses || '');
-      setNatPorts(ruleToEdit.nat_to_ports || '');
-      setComment(ruleToEdit.comment || '');
+  // Configuration definitions by manufacturer
+  const manufacturerConfigs: Record<string, any> = {
+    routeros: {
+      name: 'MikroTik RouterOS',
+      icon: '⚡',
+      tableLabel: 'Tabela (/ip firewall)',
+      tables: [
+        { value: 'filter', label: 'filter (Filtragem)' },
+        { value: 'nat', label: 'nat (Tradução de Endereço)' },
+        { value: 'mangle', label: 'mangle (QoS e Marcações)' },
+        { value: 'raw', label: 'raw (Pre-Connection Tracking)' },
+      ],
+      chainsForTable: {
+        filter: ['forward', 'input', 'output'],
+        nat: ['srcnat', 'dstnat'],
+        mangle: ['prerouting', 'forward', 'input', 'output', 'postrouting'],
+        raw: ['prerouting', 'output'],
+      },
+      actions: [
+        { value: 'accept', label: 'accept (Permitir)' },
+        { value: 'drop', label: 'drop (Bloquear/Descartar)' },
+        { value: 'reject', label: 'reject (Rejeitar com ICMP)' },
+        { value: 'fasttrack-connection', label: 'fasttrack-connection (Hardware Fastpath)' },
+        { value: 'dst-nat', label: 'dst-nat (Port Forwarding)' },
+        { value: 'src-nat', label: 'src-nat (SNAT manual)' },
+        { value: 'masquerade', label: 'masquerade (NAT Dinâmico)' },
+        { value: 'redirect', label: 'redirect (Redirecionar p/ Router)' },
+        { value: 'jump', label: 'jump (Pular para Chain customizada)' },
+        { value: 'return', label: 'return (Voltar da Chain)' },
+        { value: 'log', label: 'log (Registrar no log)' },
+      ],
+      listLabel: 'Address List',
+      chainLabel: 'Chain',
+      commentLabel: 'Comentário (comment=)',
+    },
+    iptables: {
+      name: 'Linux iptables & ipset',
+      icon: '🐧',
+      tableLabel: 'Tabela (-t)',
+      tables: [
+        { value: 'filter', label: 'filter (Padrão)' },
+        { value: 'nat', label: 'nat (NAT)' },
+        { value: 'mangle', label: 'mangle (Alteração de pacotes)' },
+        { value: 'raw', label: 'raw (Bypass de conntrack)' },
+      ],
+      chainsForTable: {
+        filter: ['FORWARD', 'INPUT', 'OUTPUT'],
+        nat: ['PREROUTING', 'POSTROUTING', 'OUTPUT'],
+        mangle: ['PREROUTING', 'FORWARD', 'INPUT', 'OUTPUT', 'POSTROUTING'],
+        raw: ['PREROUTING', 'OUTPUT'],
+      },
+      actions: [
+        { value: 'accept', label: 'ACCEPT (Permitir)' },
+        { value: 'drop', label: 'DROP (Descartar)' },
+        { value: 'reject', label: 'REJECT (Rejeitar)' },
+        { value: 'dst-nat', label: 'DNAT (--to-destination)' },
+        { value: 'src-nat', label: 'SNAT (--to-source)' },
+        { value: 'masquerade', label: 'MASQUERADE' },
+        { value: 'redirect', label: 'REDIRECT' },
+        { value: 'jump', label: 'JUMP (-j <chain>)' },
+      ],
+      listLabel: 'ipset (--match-set)',
+      chainLabel: 'Chain (-A)',
+      commentLabel: 'Comentário (--comment)',
+    },
+    nftables: {
+      name: 'Linux nftables',
+      icon: '🛡️',
+      tableLabel: 'Família / Tabela',
+      tables: [
+        { value: 'filter', label: 'table inet filter' },
+        { value: 'nat', label: 'table ip nat' },
+        { value: 'mangle', label: 'table inet mangle' },
+      ],
+      chainsForTable: {
+        filter: ['forward', 'input', 'output'],
+        nat: ['prerouting', 'postrouting'],
+        mangle: ['prerouting', 'forward', 'input', 'output', 'postrouting'],
+      },
+      actions: [
+        { value: 'accept', label: 'accept' },
+        { value: 'drop', label: 'drop' },
+        { value: 'reject', label: 'reject' },
+        { value: 'dst-nat', label: 'dnat to' },
+        { value: 'src-nat', label: 'snat to' },
+        { value: 'masquerade', label: 'masquerade' },
+      ],
+      listLabel: 'Set (@nome)',
+      chainLabel: 'Chain (Hook)',
+      commentLabel: 'Comentário (comment)',
+    },
+    cisco: {
+      name: 'Cisco IOS / ASA',
+      icon: '🏢',
+      tableLabel: 'Tipo de Política',
+      tables: [
+        { value: 'filter', label: 'Access Control List (ip access-list)' }
+      ],
+      chainsForTable: {
+        filter: ['WAN_IN', 'LAN_OUT', 'EDGE_FILTER', '101', '100'],
+      },
+      actions: [
+        { value: 'accept', label: 'permit (Permitir)' },
+        { value: 'drop', label: 'deny (Bloquear)' },
+      ],
+      listLabel: 'object-group network',
+      chainLabel: 'Nome da ACL (Chain)',
+      commentLabel: 'Descrição / Remark',
+    },
+    junos: {
+      name: 'Juniper Junos OS',
+      icon: '🌲',
+      tableLabel: 'Família de Protocolo',
+      tables: [
+        { value: 'filter', label: 'firewall family inet (Filtro L3)' }
+      ],
+      chainsForTable: {
+        filter: ['FILTER_INBOUND', 'PROTECT_RE', 'EDGE_FILTER', 'WAN_FILTER'],
+      },
+      actions: [
+        { value: 'accept', label: 'accept (Permitir)' },
+        { value: 'drop', label: 'discard (Descarte silencioso)' },
+        { value: 'reject', label: 'reject (Rejeitar com ICMP)' },
+      ],
+      listLabel: 'prefix-list',
+      chainLabel: 'Nome do Filtro (filter)',
+      commentLabel: 'Nome do Termo (term <nome>)',
+    }
+  };
 
-      setProtocol(ruleToEdit.conditions.protocol || '');
-      setSrcAddress(ruleToEdit.conditions.src_address || '');
-      setDstAddress(ruleToEdit.conditions.dst_address || '');
-      setSrcList(ruleToEdit.conditions.src_address_list || '');
-      setDstList(ruleToEdit.conditions.dst_address_list || '');
-      setSrcPort(ruleToEdit.conditions.src_port || '');
-      setDstPort(ruleToEdit.conditions.dst_port || '');
-      setInIface(ruleToEdit.conditions.in_interface || '');
-      setOutIface(ruleToEdit.conditions.out_interface || '');
-      setConnStates(ruleToEdit.conditions.connection_state || []);
-    } else {
-      setTable('filter');
-      let defaultChain = 'forward';
-      if (currentSyntax === 'iptables') defaultChain = 'FORWARD';
-      else if (currentSyntax === 'cisco') defaultChain = 'WAN_IN';
-      else if (currentSyntax === 'junos') defaultChain = 'FILTER_INBOUND';
-      setChain(defaultChain);
-      setAction('accept');
-      setTargetChain('');
-      setNatAddresses('');
-      setNatPorts('');
-      setComment('');
-      setProtocol('');
-      setSrcAddress('');
-      setDstAddress('');
-      setSrcList('');
-      setDstList('');
-      setSrcPort('');
-      setDstPort('');
-      setInIface('');
-      setOutIface('');
-      setConnStates([]);
+  const currentConfig = manufacturerConfigs[selectedSyntax] || manufacturerConfigs.routeros;
+  const availableChains = currentConfig.chainsForTable[table] || ['forward', 'input'];
+
+  useEffect(() => {
+    if (isOpen) {
+      if (ruleToEdit) {
+        setSelectedSyntax(currentSyntax);
+        setTable(ruleToEdit.table);
+        setChain(ruleToEdit.chain);
+        setAction(ruleToEdit.action);
+        setTargetChain(ruleToEdit.target_chain || '');
+        setNatAddresses(ruleToEdit.nat_to_addresses || '');
+        setNatPorts(ruleToEdit.nat_to_ports || '');
+        setComment(ruleToEdit.comment || '');
+
+        setProtocol(ruleToEdit.conditions.protocol || '');
+        setSrcAddress(ruleToEdit.conditions.src_address || '');
+        setDstAddress(ruleToEdit.conditions.dst_address || '');
+        setSrcList(ruleToEdit.conditions.src_address_list || '');
+        setDstList(ruleToEdit.conditions.dst_address_list || '');
+        setSrcPort(ruleToEdit.conditions.src_port || '');
+        setDstPort(ruleToEdit.conditions.dst_port || '');
+        setInIface(ruleToEdit.conditions.in_interface || '');
+        setOutIface(ruleToEdit.conditions.out_interface || '');
+        setConnStates(ruleToEdit.conditions.connection_state || []);
+      } else {
+        setSelectedSyntax(currentSyntax);
+        setTable('filter');
+        const defaultChains = manufacturerConfigs[currentSyntax]?.chainsForTable?.filter || ['forward'];
+        setChain(defaultChains[0] || 'forward');
+        setIsCustomChain(false);
+        setAction('accept');
+        setTargetChain('');
+        setNatAddresses('');
+        setNatPorts('');
+        setComment(currentSyntax === 'junos' ? 'allow-traffic' : '');
+        setProtocol('');
+        setSrcAddress('');
+        setDstAddress('');
+        setSrcList('');
+        setDstList('');
+        setSrcPort('');
+        setDstPort('');
+        setInIface('');
+        setOutIface('');
+        setConnStates([]);
+      }
     }
   }, [ruleToEdit, isOpen, currentSyntax]);
+
+  // When user switches manufacturer in modal
+  const handleManufacturerChange = (newSyntax: string) => {
+    setSelectedSyntax(newSyntax);
+    const cfg = manufacturerConfigs[newSyntax];
+    const newTable = cfg.tables[0].value;
+    setTable(newTable);
+    const chains = cfg.chainsForTable[newTable] || ['forward'];
+    setChain(chains[0] || 'forward');
+    setIsCustomChain(false);
+    setAction(cfg.actions[0].value);
+  };
+
+  // When user switches table, adjust default chain
+  const handleTableChange = (newTable: string) => {
+    setTable(newTable);
+    const chains = currentConfig.chainsForTable[newTable] || ['forward'];
+    if (!chains.includes(chain)) {
+      setChain(chains[0] || 'forward');
+      setIsCustomChain(false);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -131,62 +290,99 @@ export const RuleEditorModal: React.FC<RuleEditorModalProps> = ({
         <div className="p-4 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Shield className="w-5 h-5 text-cyan-400" />
-            <h2 className="text-base font-bold text-white">
-              {ruleToEdit ? 'Editar Regra de Firewall' : 'Adicionar Nova Regra'}
-            </h2>
+            <div>
+              <h2 className="text-base font-bold text-white">
+                {ruleToEdit ? 'Editar Regra de Firewall' : 'Adicionar Nova Regra'}
+              </h2>
+              <span className="text-xs text-slate-400 font-mono">
+                {currentConfig.icon} Sintaxe adaptada: <strong className="text-slate-200">{currentConfig.name}</strong>
+              </span>
+            </div>
           </div>
-          <button onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:text-white">
+          <button onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Form Body */}
         <div className="p-5 flex-1 overflow-y-auto space-y-4 text-xs font-sans">
-          {/* Section 1: Table, Chain, Action */}
+          {/* Manufacturer Selector in Modal */}
+          <div className="flex items-center justify-between p-2.5 bg-slate-950 rounded-xl border border-slate-800 text-xs">
+            <span className="text-slate-400 font-medium">Equipamento / Fabricante:</span>
+            <select
+              value={selectedSyntax}
+              onChange={(e) => handleManufacturerChange(e.target.value)}
+              className="bg-slate-900 border border-slate-700 text-cyan-300 font-semibold rounded-lg px-2.5 py-1 focus:outline-none focus:border-cyan-500 cursor-pointer"
+            >
+              <option value="routeros">⚡ MikroTik RouterOS</option>
+              <option value="iptables">🐧 Linux iptables & ipset</option>
+              <option value="nftables">🛡️ Linux nftables</option>
+              <option value="cisco">🏢 Cisco IOS / ASA</option>
+              <option value="junos">🌲 Juniper Junos OS</option>
+            </select>
+          </div>
+
+          {/* Section 1: Table, Chain, Action (Dynamic according to selected platform) */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-slate-950/70 rounded-xl border border-slate-800">
+            {/* Table */}
             <div>
-              <label className="text-slate-400 block mb-1 font-medium">Tabela</label>
+              <label className="text-slate-400 block mb-1 font-medium">{currentConfig.tableLabel}</label>
               <select
                 value={table}
-                onChange={(e) => setTable(e.target.value)}
+                onChange={(e) => handleTableChange(e.target.value)}
                 className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-100 font-mono focus:border-cyan-500 focus:outline-none"
               >
-                <option value="filter">filter</option>
-                <option value="nat">nat</option>
-                <option value="mangle">mangle</option>
-                <option value="raw">raw</option>
+                {currentConfig.tables.map((t: any) => (
+                  <option key={t.value} value={t.value}>{t.label}</option>
+                ))}
               </select>
             </div>
 
+            {/* Chain */}
             <div>
-              <label className="text-slate-400 block mb-1 font-medium">Chain</label>
-              <input
-                type="text"
-                value={chain}
-                onChange={(e) => setChain(e.target.value)}
-                placeholder="forward, input, etc."
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-100 font-mono focus:border-cyan-500 focus:outline-none"
-              />
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-slate-400 font-medium">{currentConfig.chainLabel}</label>
+                <button
+                  type="button"
+                  onClick={() => setIsCustomChain(!isCustomChain)}
+                  className="text-[10px] text-cyan-400 hover:underline"
+                >
+                  {isCustomChain ? 'Padrão' : 'Customizada'}
+                </button>
+              </div>
+
+              {isCustomChain ? (
+                <input
+                  type="text"
+                  value={chain}
+                  onChange={(e) => setChain(e.target.value)}
+                  placeholder="Nome customizado..."
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-100 font-mono focus:border-cyan-500 focus:outline-none"
+                />
+              ) : (
+                <select
+                  value={chain}
+                  onChange={(e) => setChain(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-100 font-mono focus:border-cyan-500 focus:outline-none font-semibold"
+                >
+                  {availableChains.map((ch: string) => (
+                    <option key={ch} value={ch}>{ch}</option>
+                  ))}
+                </select>
+              )}
             </div>
 
+            {/* Action */}
             <div>
-              <label className="text-slate-400 block mb-1 font-medium">Ação (Action)</label>
+              <label className="text-slate-400 block mb-1 font-medium">Ação (Action / Target)</label>
               <select
                 value={action}
                 onChange={(e) => setAction(e.target.value)}
                 className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-100 font-mono focus:border-cyan-500 focus:outline-none font-semibold"
               >
-                <option value="accept">accept</option>
-                <option value="drop">drop</option>
-                <option value="reject">reject</option>
-                <option value="fasttrack-connection">fasttrack-connection</option>
-                <option value="dst-nat">dst-nat</option>
-                <option value="src-nat">src-nat</option>
-                <option value="masquerade">masquerade</option>
-                <option value="redirect">redirect</option>
-                <option value="jump">jump</option>
-                <option value="return">return</option>
-                <option value="log">log</option>
+                {currentConfig.actions.map((act: any) => (
+                  <option key={act.value} value={act.value}>{act.label}</option>
+                ))}
               </select>
             </div>
           </div>
@@ -199,7 +395,7 @@ export const RuleEditorModal: React.FC<RuleEditorModalProps> = ({
                 type="text"
                 value={targetChain}
                 onChange={(e) => setTargetChain(e.target.value)}
-                placeholder="Ex: custom-chain-scan"
+                placeholder="Ex: scan-protection"
                 className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-100 font-mono focus:border-indigo-500 focus:outline-none"
               />
             </div>
@@ -230,7 +426,7 @@ export const RuleEditorModal: React.FC<RuleEditorModalProps> = ({
             </div>
           )}
 
-          {/* Matchers: IP, Ports, Lists */}
+          {/* Matchers: IP, Ports, Lists (adapted labels) */}
           <div className="space-y-3 p-3 bg-slate-950/70 rounded-xl border border-slate-800">
             <span className="text-[11px] font-semibold text-cyan-400 uppercase tracking-wider block">
               Critérios de Correspondência (Matchers)
@@ -270,7 +466,7 @@ export const RuleEditorModal: React.FC<RuleEditorModalProps> = ({
               </div>
             </div>
 
-            {/* Addresses & Lists */}
+            {/* Addresses & Lists (Dynamic Label) */}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-slate-400 block mb-1">Src Address (IP ou CIDR)</label>
@@ -283,7 +479,7 @@ export const RuleEditorModal: React.FC<RuleEditorModalProps> = ({
                 />
               </div>
               <div>
-                <label className="text-slate-400 block mb-1">Src Address List</label>
+                <label className="text-slate-400 block mb-1">Origem: {currentConfig.listLabel}</label>
                 <select
                   value={srcList}
                   onChange={(e) => setSrcList(e.target.value)}
@@ -309,7 +505,7 @@ export const RuleEditorModal: React.FC<RuleEditorModalProps> = ({
                 />
               </div>
               <div>
-                <label className="text-slate-400 block mb-1">Dst Address List</label>
+                <label className="text-slate-400 block mb-1">Destino: {currentConfig.listLabel}</label>
                 <select
                   value={dstList}
                   onChange={(e) => setDstList(e.target.value)}
@@ -326,22 +522,22 @@ export const RuleEditorModal: React.FC<RuleEditorModalProps> = ({
             {/* Interfaces */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-slate-400 block mb-1">In-Interface</label>
+                <label className="text-slate-400 block mb-1">In-Interface (Entrada)</label>
                 <input
                   type="text"
                   value={inIface}
                   onChange={(e) => setInIface(e.target.value)}
-                  placeholder="Ex: ether1-wan, eth0"
+                  placeholder={selectedSyntax === 'cisco' ? 'Ex: GigabitEthernet0/0' : selectedSyntax === 'junos' ? 'Ex: ge-0/0/0' : 'Ex: ether1-wan, eth0'}
                   className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 font-mono text-slate-100 focus:border-cyan-500 focus:outline-none"
                 />
               </div>
               <div>
-                <label className="text-slate-400 block mb-1">Out-Interface</label>
+                <label className="text-slate-400 block mb-1">Out-Interface (Saída)</label>
                 <input
                   type="text"
                   value={outIface}
                   onChange={(e) => setOutIface(e.target.value)}
-                  placeholder="Ex: ether2-lan, eth1"
+                  placeholder={selectedSyntax === 'cisco' ? 'Ex: GigabitEthernet0/1' : selectedSyntax === 'junos' ? 'Ex: ge-0/0/1' : 'Ex: ether2-lan, eth1'}
                   className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 font-mono text-slate-100 focus:border-cyan-500 focus:outline-none"
                 />
               </div>
@@ -349,7 +545,7 @@ export const RuleEditorModal: React.FC<RuleEditorModalProps> = ({
 
             {/* Conntrack States */}
             <div>
-              <label className="text-slate-400 block mb-1.5">Connection State</label>
+              <label className="text-slate-400 block mb-1.5">Connection State / Estado</label>
               <div className="flex flex-wrap gap-2">
                 {['new', 'established', 'related', 'invalid', 'untracked'].map((st) => {
                   const active = connStates.includes(st);
@@ -372,14 +568,14 @@ export const RuleEditorModal: React.FC<RuleEditorModalProps> = ({
             </div>
           </div>
 
-          {/* Comment */}
+          {/* Comment / Term Name / Remark */}
           <div>
-            <label className="text-slate-400 block mb-1 font-medium">Comentário / Descrição</label>
+            <label className="text-slate-400 block mb-1 font-medium">{currentConfig.commentLabel}</label>
             <input
               type="text"
               value={comment}
               onChange={(e) => setComment(e.target.value)}
-              placeholder="Ex: Allow Web and SSL from Office"
+              placeholder={selectedSyntax === 'junos' ? 'Ex: allow-ssh-admin' : selectedSyntax === 'cisco' ? 'Ex: Permit Web and SSH' : 'Ex: Allow LAN to WAN'}
               className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-slate-100 focus:border-cyan-500 focus:outline-none"
             />
           </div>
