@@ -47,8 +47,8 @@ def export_to_junos(rules: List[FirewallRule], address_lists: Dict[str, AddressL
             has_from = (
                 c.protocol or c.src_address or c.dst_address or
                 c.src_address_list or c.dst_address_list or
-                c.src_port or c.dst_port or c.in_interface or
-                (c.connection_state and "established" in c.connection_state)
+                c.src_port or c.dst_port or c.port or c.in_interface or
+                (c.connection_state and ("established" in c.connection_state or "new" in c.connection_state))
             )
 
             if has_from:
@@ -80,24 +80,36 @@ def export_to_junos(rules: List[FirewallRule], address_lists: Dict[str, AddressL
                     else:
                         lines.append(f"                    source-port {c.src_port};")
 
+                if c.port:
+                    if "," in c.port:
+                        ports_str = " ".join(c.port.split(","))
+                        lines.append(f"                    port [ {ports_str} ];")
+                    else:
+                        lines.append(f"                    port {c.port};")
+
                 if c.in_interface:
                     lines.append(f"                    interface {c.in_interface};")
 
                 if c.connection_state and "established" in c.connection_state:
                     lines.append("                    tcp-established;")
+                elif c.connection_state and "new" in c.connection_state:
+                    lines.append("                    tcp-initial;")
 
                 lines.append("                }")
 
-            # Then block
+            # Then / Subfilter block
             action = r.action.lower()
-            lines.append("                then {")
-            if action in ["drop", "discard"]:
-                lines.append("                    discard;")
-            elif action == "reject":
-                lines.append("                    reject;")
+            if action == "jump" and r.target_chain:
+                lines.append(f"                filter {r.target_chain};")
             else:
-                lines.append("                    accept;")
-            lines.append("                }")
+                lines.append("                then {")
+                if action in ["drop", "discard"]:
+                    lines.append("                    discard;")
+                elif action == "reject":
+                    lines.append("                    reject;")
+                else:
+                    lines.append("                    accept;")
+                lines.append("                }")
 
             lines.append("            }")
         lines.append("        }")

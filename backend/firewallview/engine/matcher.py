@@ -23,24 +23,66 @@ def parse_ip_or_network(value: str):
     except ValueError:
         return ("invalid", value)
 
+JUNOS_PORT_NAMES = {
+    "bgp": 179,
+    "ldp": 646,
+    "ospf": 89,
+    "rip": 520,
+    "bfd": 3784,
+    "bfd-control": 3784,
+    "bfd-echo": 3785,
+    "multihop-bfd": 4784,
+    "ssh": 22,
+    "telnet": 23,
+    "ftp": 21,
+    "ftp-data": 20,
+    "tftp": 69,
+    "http": 80,
+    "https": 443,
+    "snmp": 161,
+    "snmp-trap": 162,
+    "syslog": 514,
+    "ntp": 123,
+    "domain": 53,
+    "dns": 53,
+    "netbios": 137,
+    "netbios-ns": 137,
+    "netbios-dgm": 138,
+    "netbios-ssn": 139,
+    "bootps": 67,
+    "bootpc": 68,
+    "dhcp": 67,
+    "radius": 1812,
+    "radius-acct": 1813,
+    "tacacs": 49,
+    "sip": 5060,
+}
+
 def is_ip_matching(packet_ip_str: str, condition_str: str) -> bool:
-    """Checks if packet_ip matches single IP, CIDR, or range."""
+    """Checks if packet_ip matches single IP, CIDR, range, or comma-separated list."""
     try:
         pkt_ip = ipaddress.ip_address(packet_ip_str.strip())
     except ValueError:
         return False
 
-    parsed = parse_ip_or_network(condition_str)
-    kind = parsed[0]
-    if kind == "range":
-        _, start_ip, end_ip = parsed
-        return start_ip <= pkt_ip <= end_ip
-    elif kind == "network":
-        _, net = parsed
-        return pkt_ip in net
-    elif kind == "ip":
-        _, ip = parsed
-        return pkt_ip == ip
+    for part in condition_str.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        parsed = parse_ip_or_network(part)
+        kind = parsed[0]
+        if kind == "range":
+            _, start_ip, end_ip = parsed
+            if start_ip <= pkt_ip <= end_ip:
+                return True
+        elif kind == "network":
+            _, net = parsed
+            if pkt_ip in net:
+                return True
+        elif kind == "ip":
+            _, ip = parsed
+            if pkt_ip == ip:
+                return True
     return False
 
 def is_ip_in_address_list(packet_ip_str: str, address_list: AddressList) -> bool:
@@ -53,10 +95,10 @@ def is_ip_in_address_list(packet_ip_str: str, address_list: AddressList) -> bool
     return False
 
 def parse_port_specs(port_str: str) -> List[Tuple[int, int]]:
-    """Parses port specs like '80', '80,443', '1000-2000' into list of (min, max) ranges."""
+    """Parses port specs like '80', '80,443', '1000-2000' or service names into list of (min, max) ranges."""
     ranges = []
     for item in port_str.split(","):
-        item = item.strip()
+        item = item.strip().lower()
         if not item:
             continue
         if "-" in item:
@@ -67,11 +109,15 @@ def parse_port_specs(port_str: str) -> List[Tuple[int, int]]:
             except ValueError:
                 pass
         else:
-            try:
-                p = int(item)
+            if item in JUNOS_PORT_NAMES:
+                p = JUNOS_PORT_NAMES[item]
                 ranges.append((p, p))
-            except ValueError:
-                pass
+            else:
+                try:
+                    p = int(item)
+                    ranges.append((p, p))
+                except ValueError:
+                    pass
     return ranges
 
 def is_port_matching(packet_port: int, condition_str: str) -> bool:
@@ -131,7 +177,11 @@ def evaluate_rule_match(
         cond_proto = c.protocol.strip().lower()
         pkt_proto = packet.protocol.strip().lower()
         if cond_proto not in ["any", "all", "ip"]:
-            proto_match = (cond_proto == pkt_proto)
+            protos = [p.strip().lower() for p in cond_proto.split(",") if p.strip()]
+            proto_match = any(
+                p == pkt_proto or (p in ["icmp", "icmp6"] and pkt_proto in ["icmp", "icmp6"])
+                for p in protos
+            )
             if c.negate_protocol:
                 proto_match = not proto_match
 
@@ -167,34 +217,38 @@ def evaluate_rule_match(
 
     # 4. Source Address List
     if c.src_address_list and c.src_address_list.strip():
-        list_name = c.src_address_list.strip()
-        addr_list = address_lists.get(list_name)
+        list_names = [ln.strip() for ln in c.src_address_list.split(",") if ln.strip()]
         matched = False
-        if addr_list:
-            matched = is_ip_in_address_list(packet.src_ip, addr_list)
+        for list_name in list_names:
+            addr_list = address_lists.get(list_name)
+            if addr_list and is_ip_in_address_list(packet.src_ip, addr_list):
+                matched = True
+                break
         if c.negate_src_address_list:
             matched = not matched
 
         if matched:
-            reasons.append(f"Src IP {packet.src_ip} is in address list '{list_name}'")
+            reasons.append(f"Src IP {packet.src_ip} is in address list '{c.src_address_list}'")
         else:
-            reasons.append(f"Src IP {packet.src_ip} is NOT in address list '{list_name}'")
+            reasons.append(f"Src IP {packet.src_ip} is NOT in address list '{c.src_address_list}'")
             return False, reasons
 
     # 5. Destination Address List
     if c.dst_address_list and c.dst_address_list.strip():
-        list_name = c.dst_address_list.strip()
-        addr_list = address_lists.get(list_name)
+        list_names = [ln.strip() for ln in c.dst_address_list.split(",") if ln.strip()]
         matched = False
-        if addr_list:
-            matched = is_ip_in_address_list(packet.dst_ip, addr_list)
+        for list_name in list_names:
+            addr_list = address_lists.get(list_name)
+            if addr_list and is_ip_in_address_list(packet.dst_ip, addr_list):
+                matched = True
+                break
         if c.negate_dst_address_list:
             matched = not matched
 
         if matched:
-            reasons.append(f"Dst IP {packet.dst_ip} is in address list '{list_name}'")
+            reasons.append(f"Dst IP {packet.dst_ip} is in address list '{c.dst_address_list}'")
         else:
-            reasons.append(f"Dst IP {packet.dst_ip} is NOT in address list '{list_name}'")
+            reasons.append(f"Dst IP {packet.dst_ip} is NOT in address list '{c.dst_address_list}'")
             return False, reasons
 
     # 6. Any Port (port= in MikroTik, matches either src or dst port)

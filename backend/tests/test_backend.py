@@ -321,5 +321,120 @@ def test_ipv6_firewall_parser():
     assert rules[1].chain == "forward"
     assert rules[1].action == "drop"
 
+def test_junos_advanced_features_and_simulation():
+    from firewallview.parsers.junos import parse_junos_script
+    raw_script = """
+    set policy-options prefix-list bgp-peers 198.51.100.10/32
+    set policy-options prefix-list bgp-peers 198.51.100.11/32
+    set policy-options prefix-list dynamic-peers apply-path "protocols bgp group <*> neighbor <*>"
+    
+    set firewall family inet filter accept-icmp term allow-ping from protocol icmp
+    set firewall family inet filter accept-icmp term allow-ping then accept
+
+    set firewall family inet filter protect-re term accept-bgp from source-prefix-list bgp-peers
+    set firewall family inet filter protect-re term accept-bgp from protocol tcp
+    set firewall family inet filter protect-re term accept-bgp from destination-port bgp
+    set firewall family inet filter protect-re term accept-bgp then accept
+
+    set firewall family inet filter protect-re term accept-icmp filter accept-icmp
+
+    set firewall family inet filter protect-re term bfd from protocol udp
+    set firewall family inet filter protect-re term bfd from destination-port 3784
+    set firewall family inet filter protect-re term bfd from destination-port 3785
+    set firewall family inet filter protect-re term bfd then accept
+
+    set firewall family inet filter protect-re term tcp-mgmt from protocol tcp
+    set firewall family inet filter protect-re term tcp-mgmt from port ssh
+    set firewall family inet filter protect-re term tcp-mgmt from tcp-established
+    set firewall family inet filter protect-re term tcp-mgmt then accept
+
+    set firewall family inet filter protect-re term blocked-bad from protocol udp
+    set firewall family inet filter protect-re term blocked-bad from destination-port 0
+    set firewall family inet filter protect-re term blocked-bad then reject
+    deactivate firewall family inet filter protect-re term blocked-bad
+
+    set firewall family inet filter protect-re term discard-all then discard
+    """
+    rules, addr_lists = parse_junos_script(raw_script)
+
+    assert "bgp-peers" in addr_lists
+    assert len(addr_lists["bgp-peers"].entries) == 2
+    assert "dynamic-peers" in addr_lists
+    assert len(addr_lists["dynamic-peers"].entries) == 0 # apply-path safely handled
+
+    # Check rule actions and conditions
+    bgp_rule = next(r for r in rules if "accept-bgp" in r.comment)
+    assert bgp_rule.conditions.dst_port == "179" # bgp resolved to 179
+
+    jump_rule = next(r for r in rules if "accept-icmp" in r.comment and r.chain == "protect-re")
+    assert jump_rule.action == "jump"
+    assert jump_rule.target_chain == "accept-icmp"
+
+    bfd_rule = next(r for r in rules if "bfd" in r.comment)
+    assert "3784" in bfd_rule.conditions.dst_port
+    assert "3785" in bfd_rule.conditions.dst_port
+
+    mgmt_rule = next(r for r in rules if "tcp-mgmt" in r.comment)
+    assert mgmt_rule.conditions.port == "22" # ssh resolved to 22 in port=
+    assert "established" in mgmt_rule.conditions.connection_state
+
+    deactivated_rule = next(r for r in rules if "blocked-bad" in r.comment)
+    assert deactivated_rule.disabled is True
+
+    sim = FirewallSimulator(rules, addr_lists)
+
+    # 1. BGP from valid peer accepted by protect-re
+    pkt_bgp = SimulationPacket(
+        src_ip="198.51.100.10",
+        dst_ip="192.0.2.1",
+        src_port=51234,
+        dst_port=179,
+        protocol="tcp",
+        flow_type="input",
+        is_router_traffic=True
+    )
+    res_bgp = sim.simulate(pkt_bgp)
+    assert res_bgp.verdict == "ACCEPT"
+
+    # 2. ICMP jumps to accept-icmp subfilter and gets ACCEPTED
+    pkt_icmp = SimulationPacket(
+        src_ip="203.0.113.88",
+        dst_ip="192.0.2.1",
+        src_port=0,
+        dst_port=0,
+        protocol="icmp",
+        flow_type="input",
+        is_router_traffic=True
+    )
+    res_icmp = sim.simulate(pkt_icmp)
+    assert res_icmp.verdict == "ACCEPT"
+
+    # 3. Port 0 packet would be rejected by blocked-bad, but because it is DEACTIVATED, it falls through to discard-all
+    pkt_zero = SimulationPacket(
+        src_ip="203.0.113.88",
+        dst_ip="192.0.2.1",
+        src_port=12345,
+        dst_port=0,
+        protocol="udp",
+        flow_type="input",
+        is_router_traffic=True
+    )
+    res_zero = sim.simulate(pkt_zero)
+    assert res_zero.verdict == "DROP" # dropped by discard-all, not rejected by blocked-bad
+
+    # 4. Unknown random traffic dropped by discard-all
+    pkt_telnet = SimulationPacket(
+        src_ip="203.0.113.99",
+        dst_ip="192.0.2.1",
+        src_port=40000,
+        dst_port=23,
+        protocol="tcp",
+        flow_type="input",
+        is_router_traffic=True
+    )
+    res_telnet = sim.simulate(pkt_telnet)
+    assert res_telnet.verdict == "DROP"
+
+
 
 

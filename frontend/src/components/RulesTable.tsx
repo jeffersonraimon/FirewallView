@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Check,
   X,
@@ -51,6 +51,18 @@ export const RulesTable: React.FC<RulesTableProps> = ({
       }
     }
   }
+
+  // Collect all available chains dynamically
+  const availableChains = useMemo(() => {
+    const defaultChains = ['forward', 'input', 'output', 'prerouting', 'postrouting', 'srcnat', 'dstnat'];
+    const customChains = new Set<string>();
+    rules.forEach((r) => {
+      if (r.chain && !defaultChains.includes(r.chain.toLowerCase())) {
+        customChains.add(r.chain);
+      }
+    });
+    return [...defaultChains, ...Array.from(customChains).sort()];
+  }, [rules]);
 
   // Filter rules
   const filteredRules = rules.filter((r) => {
@@ -128,13 +140,11 @@ export const RulesTable: React.FC<RulesTableProps> = ({
               className="bg-transparent text-slate-200 focus:outline-none cursor-pointer"
             >
               <option value="all">Todas as Chains</option>
-              <option value="forward">forward</option>
-              <option value="input">input</option>
-              <option value="output">output</option>
-              <option value="prerouting">prerouting</option>
-              <option value="postrouting">postrouting</option>
-              <option value="srcnat">srcnat</option>
-              <option value="dstnat">dstnat</option>
+              {availableChains.map((c: string) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
             </select>
           </div>
         </div>

@@ -21,12 +21,24 @@ class FirewallSimulator:
             return matched
 
         # If evaluating main filter forward/input/output and there are no rules explicitly named,
-        # but there are rules in filter table with named ACL or Junos filter names (e.g. JUNOS_EDGE_FILTER, WAN_IN)
+        # but there are rules in filter table with named ACL or Junos filter names (e.g. protect-re, local_acl, WAN_IN)
         if table.lower() == "filter" and chain.lower() in ["forward", "input", "output"]:
             all_filter_rules = [r for r in self.rules if r.table.lower() == "filter"]
             has_standard = any(r.chain.lower() in ["forward", "input", "output"] for r in all_filter_rules)
             if not has_standard and all_filter_rules:
-                return all_filter_rules
+                # Sub-chains (targets of jump) should not run as root chains
+                jump_targets = {r.target_chain.lower() for r in self.rules if r.action == "jump" and r.target_chain}
+                root_rules = [r for r in all_filter_rules if r.chain.lower() not in jump_targets]
+
+                if chain.lower() == "input":
+                    input_root_rules = [
+                        r for r in root_rules
+                        if any(k in r.chain.lower() for k in ["protect-re", "re-protect", "-lo", "lo0", "input", "local_acl"])
+                    ]
+                    if input_root_rules:
+                        return input_root_rules
+
+                return root_rules if root_rules else all_filter_rules
 
         return []
 
@@ -236,9 +248,9 @@ class FirewallSimulator:
                 jump_done, jump_verdict, term_id = self._evaluate_chain(
                     table, target_chain or "", jump_rules, packet, stage_eval, flow_path, call_stack
                 )
-                if jump_done:
-                    return True, jump_verdict, term_id
-                # If jump returned or ended without drop, continue next rule in current chain
+                if jump_done or jump_verdict in ["DROP", "REJECT", "ACCEPT"]:
+                    return jump_done or (table.lower() == "filter" and jump_verdict == "ACCEPT"), jump_verdict, term_id
+                # If jump returned or ended without drop/accept, continue next rule in current chain
 
             elif action_lower == "dst-nat":
                 orig_dst = f"{packet.dst_ip}:{packet.dst_port}"
