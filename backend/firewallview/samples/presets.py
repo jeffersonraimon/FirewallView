@@ -4,6 +4,7 @@ from firewallview.models.address_list import AddressList, AddressListEntry
 from firewallview.parsers.routeros import parse_routeros_script
 from firewallview.parsers.iptables import parse_iptables_script
 from firewallview.parsers.cisco import parse_cisco_acl
+from firewallview.parsers.junos import parse_junos_script
 
 PRESET_ROUTEROS = """
 /ip firewall address-list
@@ -73,9 +74,78 @@ ip access-list extended EDGE_INBOUND
  deny ip any any
 """
 
+PRESET_JUNOS = """
+firewall {
+    family inet {
+        prefix-list BLOCKED_PREFIXES {
+            10.0.0.0/8;
+            172.16.0.0/12;
+            192.168.0.0/16;
+            198.51.100.0/24;
+        }
+        prefix-list NOC_ADMINS {
+            192.168.88.10/32;
+            192.168.88.20/32;
+        }
+        filter JUNOS_EDGE_FILTER {
+            term allow-established {
+                from {
+                    tcp-established;
+                }
+                then {
+                    accept;
+                }
+            }
+            term allow-ssh-admins {
+                from {
+                    source-prefix-list NOC_ADMINS;
+                    protocol tcp;
+                    destination-port 22;
+                }
+                then {
+                    accept;
+                }
+            }
+            term drop-bogons {
+                from {
+                    source-prefix-list BLOCKED_PREFIXES;
+                }
+                then {
+                    discard;
+                }
+            }
+            term allow-web-services {
+                from {
+                    protocol tcp;
+                    destination-port [ 80 443 ];
+                }
+                then {
+                    accept;
+                }
+            }
+            term allow-icmp {
+                from {
+                    protocol icmp;
+                }
+                then {
+                    accept;
+                }
+            }
+            term default-discard {
+                then {
+                    discard;
+                }
+            }
+        }
+    }
+}
+"""
+
 def get_preset(name: str) -> Tuple[List[FirewallRule], Dict[str, AddressList]]:
     name_clean = name.lower()
-    if "cisco" in name_clean:
+    if "junos" in name_clean or "juniper" in name_clean:
+        return parse_junos_script(PRESET_JUNOS)
+    elif "cisco" in name_clean:
         return parse_cisco_acl(PRESET_CISCO)
     elif "iptables" in name_clean:
         return parse_iptables_script(PRESET_IPTABLES)

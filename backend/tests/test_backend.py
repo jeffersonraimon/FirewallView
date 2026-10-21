@@ -92,3 +92,35 @@ def test_nftables_parser():
     sim = FirewallSimulator(rules, sets)
     res = sim.simulate(pkt)
     assert res.verdict == "DROP"
+
+def test_junos_parser_and_simulation():
+    from firewallview.parsers.junos import parse_junos_script
+    from firewallview.samples.presets import PRESET_JUNOS
+
+    rules, addr_lists = parse_junos_script(PRESET_JUNOS)
+    assert len(rules) >= 4
+    assert "BLOCKED_PREFIXES" in addr_lists
+    assert "NOC_ADMINS" in addr_lists
+
+    # Test 1: Bogon IP dropped by drop-bogons term
+    pkt_bogon = SimulationPacket(
+        src_ip="10.20.30.40",
+        dst_ip="1.1.1.1",
+        src_port=50000,
+        dst_port=80,
+        protocol="tcp"
+    )
+    sim = FirewallSimulator(rules, addr_lists)
+    res = sim.simulate(pkt_bogon)
+    assert res.verdict == "DROP"
+
+    # Test 2: SSH from NOC Admin allowed
+    pkt_admin = SimulationPacket(
+        src_ip="192.168.88.10",
+        dst_ip="192.168.88.1",
+        src_port=52345,
+        dst_port=22,
+        protocol="tcp"
+    )
+    res_admin = sim.simulate(pkt_admin)
+    assert res_admin.verdict == "ACCEPT"

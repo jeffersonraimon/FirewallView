@@ -8,7 +8,7 @@ Always maintain absolute technical precision, visual consistency, and architectu
 2. **Canonical Pipeline Order**:
    - Forward: Raw (prerouting) -> Mangle (prerouting) -> DstNAT (prerouting) -> Routing -> Mangle (forward) -> Filter (forward) -> Mangle (postrouting) -> SrcNAT (postrouting).
    - Input: Raw (prerouting) -> Mangle (prerouting) -> DstNAT (prerouting) -> Routing -> Mangle (input) -> Filter (input).
-3. **Multi-Syntax Support**: RouterOS v6/v7, iptables/ipset, nftables, and Cisco ACL must have full parser and exporter parity.
+3. **Multi-Syntax Support**: RouterOS v6/v7, iptables/ipset, nftables, Cisco ACL, and Juniper Junos OS must have full parser and exporter parity.
 4. **IP & Range Logic**: Always use Python `ipaddress` for CIDR, host, and range math in `backend/firewallview/engine/matcher.py`.
 5. **Visual Standards**:
    - Dark theme using `slate-950`, `slate-900`, `slate-800`.

@@ -20,6 +20,7 @@ Ele permite validar previamente como pacotes de rede (TCP, UDP, ICMP, etc.) se c
   - **Linux iptables & ipset**: Regras `iptables -A ...`, `iptables-save`, `ipset create/add`, suporte a `-m set --match-set`.
   - **nftables**: Sintaxe declarativa e em blocos `table inet filter { chain input { ... } }`, sets (`@list`), hooks e priorities.
   - **Cisco ACL & ASA**: `access-list` standard/extended, named ACLs `ip access-list extended`, e `object-group network`.
+  - **Juniper Junos OS**: Sintaxe hierárquica `firewall { family inet { filter ... } }` e comandos `set`, com suporte a `prefix-list`, `terms`, matchers e ações (`accept`, `discard`, `reject`).
 
 - **Gerenciador de Address Lists & IPsets**:
   - Suporte a IPs únicos (`10.0.0.1`), prefixos CIDR (`192.168.0.0/24`), ranges (`10.0.0.1-10.0.0.50`).

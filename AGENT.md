@@ -8,7 +8,7 @@
 
 - **Simulador Preciso**: O FirewallView não é apenas um exibidor de tabelas; ele executa uma **simulação matemática e lógica determinística** do fluxo de pacotes em redes de computadores.
 - **Minimalismo e Ergonomia**: Interface limpa, confortável aos olhos (dark mode de alto contraste controlado), sem poluição visual ou complexidade desnecessária.
-- **Multi-Plataforma por Design**: O FirewallView deve tratar MikroTik RouterOS (v6/v7), Linux iptables/ipset, nftables e Cisco ACL como cidadãos de primeira classe, mantendo paridade de recursos e capacidade de conversão cruzada entre eles.
+- **Multi-Plataforma por Design**: O FirewallView deve tratar MikroTik RouterOS (v6/v7), Linux iptables/ipset, nftables, Cisco ACL e Juniper Junos OS como cidadãos de primeira classe, mantendo paridade de recursos e capacidade de conversão cruzada entre eles.
 
 ---
 
@@ -82,11 +82,12 @@ O fluxo de pacotes deve respeitar rigorosamente a ordem do kernel/SO:
 
 Ao adicionar ou modificar regras para qualquer firewall suportado:
 1. **Parsers** devem aceitar comentários, linhas vazias, variações de maiúsculas/minúsculas e parâmetros em ordens arbitrárias.
-2. Todo novo campo adicionado em `RuleCondition` ou `FirewallRule` DEVE ser implementado em **todos os 4 parsers e exporters**:
+2. Todo novo campo adicionado em `RuleCondition` ou `FirewallRule` DEVE ser implementado em **todos os 5 parsers e exporters**:
    - `routeros.py`
    - `iptables.py`
    - `nftables.py`
    - `cisco.py`
+   - `junos.py`
 3. Cada mudança nos parsers DEVE ser acompanhada de testes unitários correspondentes em `backend/tests/`.
 
 ---

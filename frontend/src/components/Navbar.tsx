@@ -78,6 +78,16 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             Cisco ACL
           </button>
+          <button
+            onClick={() => onLoadPreset('junos')}
+            className={`px-2.5 py-1.5 rounded-lg transition-all font-medium ${
+              currentSyntax === 'junos'
+                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+            }`}
+          >
+            Juniper Junos
+          </button>
         </div>
 
         {/* Actions */}

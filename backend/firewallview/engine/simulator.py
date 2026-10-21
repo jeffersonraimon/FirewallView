@@ -12,10 +12,23 @@ class FirewallSimulator:
         self.address_lists = address_lists
 
     def get_rules_for_chain(self, table: str, chain: str) -> List[FirewallRule]:
-        return [
+        # Exact table + chain match
+        matched = [
             r for r in self.rules
             if (r.table.lower() == table.lower() and r.chain.lower() == chain.lower())
         ]
+        if matched:
+            return matched
+
+        # If evaluating main filter forward/input and there are no rules explicitly named "forward"/"input",
+        # but there are rules in filter table with named ACL or Junos filter names (e.g. JUNOS_EDGE_FILTER, WAN_IN)
+        if table.lower() == "filter" and chain.lower() in ["forward", "input"]:
+            all_filter_rules = [r for r in self.rules if r.table.lower() == "filter"]
+            has_standard = any(r.chain.lower() in ["forward", "input", "output"] for r in all_filter_rules)
+            if not has_standard and all_filter_rules:
+                return all_filter_rules
+
+        return []
 
     def simulate(self, packet: SimulationPacket) -> SimulationResult:
         # Create a deep copy of packet to track mutations (NAT, marks)
