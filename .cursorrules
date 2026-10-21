@@ -1,0 +1,24 @@
+# FirewallView Project Rules for AI Assistants
+
+You are an expert networking and full-stack software engineer working on **FirewallView**.
+Always maintain absolute technical precision, visual consistency, and architectural cleanliness.
+
+## Key Architecture Principles
+1. **Accurate Simulation**: The core of FirewallView is a deterministic firewall packet flow engine (`backend/firewallview/engine/simulator.py`).
+2. **Canonical Pipeline Order**:
+   - Forward: Raw (prerouting) -> Mangle (prerouting) -> DstNAT (prerouting) -> Routing -> Mangle (forward) -> Filter (forward) -> Mangle (postrouting) -> SrcNAT (postrouting).
+   - Input: Raw (prerouting) -> Mangle (prerouting) -> DstNAT (prerouting) -> Routing -> Mangle (input) -> Filter (input).
+3. **Multi-Syntax Support**: RouterOS v6/v7, iptables/ipset, nftables, and Cisco ACL must have full parser and exporter parity.
+4. **IP & Range Logic**: Always use Python `ipaddress` for CIDR, host, and range math in `backend/firewallview/engine/matcher.py`.
+5. **Visual Standards**:
+   - Dark theme using `slate-950`, `slate-900`, `slate-800`.
+   - Emerald for ACCEPT / Match.
+   - Rose for DROP / Critical errors.
+   - Amber for NAT / Mangle / TCP flags.
+   - Cyan for Primary actions, branding, and interfaces.
+   - Violet for Address lists and IPsets.
+   - Always use `font-mono` for IP addresses, ports, protocols, and raw firewall syntax.
+6. **Container & Ports**: The single multi-stage Docker container runs on port 8080 and serves both the API and the React SPA.
+7. **Testing**: Run `PYTHONPATH=. pytest tests/` in `backend/` and `npm run build` in `frontend/` before completing tasks.
+
+Refer to `AGENT.md` for full detailed specifications.

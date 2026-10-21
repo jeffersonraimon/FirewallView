@@ -125,6 +125,8 @@ FirewallView/
 ├── Dockerfile               # Build multi-stage otimizado
 ├── docker-compose.yml       # Orquestração do contêiner
 ├── run.sh                   # Script executável de inicialização
+├── AGENT.md                 # Diretrizes de arquitetura e consistência para IAs
+├── .cursorrules             # Regras do projeto para assistentes de código
 ├── LICENSE                  # Licença MIT
 └── README.md                # Documentação
 ```
