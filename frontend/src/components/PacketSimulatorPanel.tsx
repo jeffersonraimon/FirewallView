@@ -124,6 +124,22 @@ export const PacketSimulatorPanel: React.FC<PacketSimulatorPanelProps> = ({
           is_router_traffic: true
         });
         break;
+      case 'clear':
+        onChangePacket({
+          src_ip: '',
+          dst_ip: '',
+          src_port: 0,
+          dst_port: 0,
+          protocol: 'tcp',
+          in_interface: '',
+          out_interface: '',
+          connection_state: 'new',
+          tcp_flags: [],
+          packet_marks: [],
+          flow_type: 'forward',
+          is_router_traffic: false
+        });
+        break;
       default:
         break;
     }
@@ -191,6 +207,14 @@ export const PacketSimulatorPanel: React.FC<PacketSimulatorPanelProps> = ({
             title="Pacote originado no próprio roteador saindo para a internet (OUTPUT)"
           >
             Router Output (DNS 53)
+          </button>
+          <button
+            onClick={() => setPacketPreset('clear')}
+            className="px-2 py-1 rounded bg-slate-800 hover:bg-rose-950/40 border border-slate-700/60 hover:border-rose-800/50 text-slate-400 hover:text-rose-300 transition flex items-center gap-1"
+            title="Limpar todos os campos do pacote de teste"
+          >
+            <RotateCcw className="w-3 h-3" />
+            Limpar
           </button>
         </div>
       </div>

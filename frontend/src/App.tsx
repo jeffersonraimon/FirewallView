@@ -29,6 +29,21 @@ const DEFAULT_PACKET: SimulationPacket = {
   is_router_traffic: false
 };
 
+const BLANK_PACKET: SimulationPacket = {
+  src_ip: '',
+  dst_ip: '',
+  src_port: 0,
+  dst_port: 0,
+  protocol: 'tcp',
+  in_interface: '',
+  out_interface: '',
+  connection_state: 'new',
+  tcp_flags: [],
+  packet_marks: [],
+  flow_type: 'forward',
+  is_router_traffic: false
+};
+
 export function App() {
   const [currentSyntax, setCurrentSyntax] = useState<string>(() => {
     return localStorage.getItem(STORAGE_KEY_SYNTAX) || 'routeros';
@@ -121,8 +136,9 @@ export function App() {
   const handleClearToBlank = () => {
     setRules([]);
     setAddressLists({});
+    setPacket(BLANK_PACKET);
     setSelectedStage(null);
-    executeSimulation(packet, [], {});
+    executeSimulation(BLANK_PACKET, [], {});
   };
 
   const loadPresetData = async (presetName: string) => {
@@ -133,8 +149,14 @@ export function App() {
       setAddressLists(data.address_lists);
       setCurrentSyntax(presetName);
 
+      // If packet was cleared (blank), reset it to DEFAULT_PACKET when loading an example preset
+      const targetPacket = (!packet.src_ip && !packet.dst_ip) ? DEFAULT_PACKET : packet;
+      if (!packet.src_ip && !packet.dst_ip) {
+        setPacket(DEFAULT_PACKET);
+      }
+
       // Trigger simulation
-      const res = await runSimulation(packet, data.rules, data.address_lists);
+      const res = await runSimulation(targetPacket, data.rules, data.address_lists);
       setSimulationResult(res);
     } catch (err) {
       console.error('Failed to load preset', err);
