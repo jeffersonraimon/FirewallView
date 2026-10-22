@@ -44,6 +44,8 @@ class FirewallRule(BaseModel):
     mark_value: Optional[str] = None
     address_list_target: Optional[str] = None # target list for add-src-to-address-list
     address_list_timeout: Optional[str] = None # e.g. 3d, 10s
+    npt_src_prefix: Optional[str] = None # NPTv6 matching prefix (RFC 6296)
+    npt_dst_prefix: Optional[str] = None # NPTv6 target prefix (RFC 6296)
     conditions: RuleCondition = Field(default_factory=RuleCondition)
     comment: Optional[str] = None
     disabled: bool = False

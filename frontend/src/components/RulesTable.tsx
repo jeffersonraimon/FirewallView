@@ -95,7 +95,7 @@ export const RulesTable: React.FC<RulesTableProps> = ({
     if (act === 'reject') {
       return 'bg-orange-950 text-orange-300 border-orange-800';
     }
-    if (act === 'dst-nat' || act === 'src-nat' || act === 'masquerade' || act === 'redirect') {
+    if (act === 'dst-nat' || act === 'src-nat' || act === 'masquerade' || act === 'redirect' || act === 'snpt' || act === 'dnpt') {
       return 'bg-amber-950 text-amber-300 border-amber-800';
     }
     if (act === 'jump' || act === 'return') {
@@ -273,6 +273,11 @@ export const RulesTable: React.FC<RulesTableProps> = ({
                         {rule.address_list_target && (
                           <span className="text-[10px] text-emerald-300 block font-mono mt-0.5">
                             +list: {rule.address_list_target}{rule.address_list_timeout ? ` (${rule.address_list_timeout})` : ''}
+                          </span>
+                        )}
+                        {rule.npt_src_prefix && rule.npt_dst_prefix && (
+                          <span className="text-[10px] text-amber-300 block font-mono mt-0.5">
+                            npt: {rule.npt_src_prefix} → {rule.npt_dst_prefix}
                           </span>
                         )}
                       </td>

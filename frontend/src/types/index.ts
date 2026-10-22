@@ -40,6 +40,8 @@ export interface FirewallRule {
   mark_value?: string;
   address_list_target?: string;
   address_list_timeout?: string;
+  npt_src_prefix?: string;
+  npt_dst_prefix?: string;
   conditions: RuleCondition;
   comment?: string;
   disabled: boolean;

@@ -94,6 +94,10 @@ def export_to_routeros(rules: List[FirewallRule], address_lists: Dict[str, Addre
                 parts.append(f"to-ports={r.nat_to_ports}")
             if r.mark_value:
                 parts.append(f"new-packet-mark={r.mark_value}")
+            if r.npt_src_prefix:
+                parts.append(f"src-prefix={r.npt_src_prefix}")
+            if r.npt_dst_prefix:
+                parts.append(f"dst-prefix={r.npt_dst_prefix}")
 
             if r.disabled:
                 parts.append("disabled=yes")

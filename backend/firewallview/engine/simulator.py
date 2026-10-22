@@ -300,6 +300,45 @@ class FirewallSimulator:
                 eval_item.applied_effect = f"TCP MSS adjusted to {mss}"
                 stage_eval.evaluated_rules.append(eval_item)
 
+            elif action_lower in ["snpt", "dnpt"]:
+                import ipaddress
+                is_snpt = (action_lower == "snpt")
+                src_prefix = rule.npt_src_prefix
+                dst_prefix = rule.npt_dst_prefix
+                target_ip_str = packet.src_ip if is_snpt else packet.dst_ip
+
+                translated = False
+                orig_ip = target_ip_str
+
+                if src_prefix and dst_prefix:
+                    try:
+                        from_net = ipaddress.IPv6Network(src_prefix.strip(), strict=False)
+                        to_net = ipaddress.IPv6Network(dst_prefix.strip(), strict=False)
+                        curr_ip = ipaddress.IPv6Address(target_ip_str.strip())
+
+                        if curr_ip in from_net:
+                            host_mask = (1 << (128 - from_net.prefixlen)) - 1
+                            host_bits = int(curr_ip) & host_mask
+                            new_ip_int = int(to_net.network_address) | host_bits
+                            new_ip_str = str(ipaddress.IPv6Address(new_ip_int))
+
+                            if is_snpt:
+                                packet.src_ip = new_ip_str
+                            else:
+                                packet.dst_ip = new_ip_str
+                            translated = True
+                            target_ip_str = new_ip_str
+                    except Exception:
+                        pass
+
+                trans_type = "SNPTv6 (Stateless Source NAT)" if is_snpt else "DNPTv6 (Stateless Destination NAT)"
+                if translated:
+                    eval_item.applied_effect = f"{trans_type} applied: {orig_ip} -> {target_ip_str}. (Stateless: conntrack does not track this session)"
+                else:
+                    eval_item.applied_effect = f"{trans_type} evaluated ({src_prefix} -> {dst_prefix})"
+                stage_eval.evaluated_rules.append(eval_item)
+                return False, "CONTINUE", rule.id
+
             elif action_lower in ["add-src-to-address-list", "add-dst-to-address-list"]:
                 target_list = rule.address_list_target or "DYNAMIC_LIST"
                 target_ip = packet.src_ip if "src" in action_lower else packet.dst_ip

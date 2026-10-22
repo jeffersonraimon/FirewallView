@@ -142,7 +142,7 @@ def parse_routeros_script(content: str) -> Tuple[List[FirewallRule], Dict[str, A
         if not is_address_list:
             if chain_val in ["srcnat", "dstnat"]:
                 table = "nat"
-            elif table == "filter" and any(k.startswith("new-") for k in props):
+            elif table == "filter" and (any(k.startswith("new-") for k in props) or props.get("action", "").lower() in ["snpt", "dnpt"]):
                 table = "mangle"
 
         # Check if address list command
@@ -292,6 +292,15 @@ def parse_routeros_script(content: str) -> Tuple[List[FirewallRule], Dict[str, A
             nat_to_ports = props.get("to-ports")
             address_list_target = props.get("address-list")
             address_list_timeout = props.get("address-list-timeout")
+            npt_src_prefix = props.get("src-prefix")
+            npt_dst_prefix = props.get("dst-prefix")
+
+            # NPTv6 match helpers
+            if action == "snpt" and npt_src_prefix and not cond.src_address:
+                cond.src_address = npt_src_prefix
+            elif action == "dnpt" and npt_src_prefix and not cond.dst_address:
+                cond.dst_address = npt_src_prefix
+
             mark_value = (
                 props.get("new-packet-mark")
                 or props.get("new-routing-mark")
@@ -311,6 +320,8 @@ def parse_routeros_script(content: str) -> Tuple[List[FirewallRule], Dict[str, A
                 mark_value=mark_value,
                 address_list_target=address_list_target,
                 address_list_timeout=address_list_timeout,
+                npt_src_prefix=npt_src_prefix,
+                npt_dst_prefix=npt_dst_prefix,
                 conditions=cond,
                 comment=comment,
                 disabled=disabled,

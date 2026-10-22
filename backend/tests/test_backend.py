@@ -578,6 +578,81 @@ def test_dmos_parser_and_simulation():
     assert "action permit" in exported_text
     assert "action deny" in exported_text
 
+def test_routeros_nptv6_and_conntrack_invalid_case():
+    raw_script = """
+    /ipv6 firewall mangle
+    add chain=prerouting action=dnpt in-interface=WAN src-prefix=2001:db8:a01::/64 dst-prefix=fd00:1:10::/64 comment="DNPT inbound"
+    add chain=postrouting action=snpt out-interface=WAN src-prefix=fd00:1:10::/64 dst-prefix=2001:db8:a01::/64 comment="SNPT outbound"
+
+    /ipv6 firewall filter
+    add chain=forward action=accept connection-state=established,related comment="ESTABLISHED"
+    add chain=forward action=drop connection-state=invalid comment="DROP INVALID"
+    add chain=forward action=accept out-interface=10-SERVERS dst-address=fd00:1:10::/64 comment="ALLOW SERVERS"
+    """
+    rules, addr_lists = parse_routeros_script(raw_script)
+    assert len(rules) == 5
+
+    dnpt_rule = next(r for r in rules if r.action == "dnpt")
+    assert dnpt_rule.npt_src_prefix == "2001:db8:a01::/64"
+    assert dnpt_rule.npt_dst_prefix == "fd00:1:10::/64"
+
+    sim = FirewallSimulator(rules, addr_lists)
+
+    # Test 1: Inbound return traffic from Google with connection-state=invalid (due to conntrack missing stateless NPTv6)
+    # DNPT in prerouting translates dst_ip from 2001:db8:a01::55 to fd00:1:10::55.
+    # Then in filter forward, DROP INVALID matches connection-state=invalid and drops it!
+    pkt_inbound_invalid = SimulationPacket(
+        src_ip="2001:4860:4860::8888",
+        dst_ip="2001:db8:a01::55",
+        src_port=443,
+        dst_port=54321,
+        protocol="tcp",
+        connection_state="invalid",
+        in_interface="WAN",
+        out_interface="10-SERVERS",
+        flow_type="forward"
+    )
+    res = sim.simulate(pkt_inbound_invalid)
+    assert res.verdict == "DROP"
+    assert res.matched_rule_id == "4" # DROP INVALID
+    # Destination was translated in PREROUTING before reaching filter
+    assert res.packet_out.dst_ip == "fd00:1:10::55"
+
+    # Test 2: If ALLOW SERVERS is placed before DROP INVALID (the old working script behavior)
+    import copy
+    reordered_rules = [
+        copy.deepcopy(rules[0]), # dnpt
+        copy.deepcopy(rules[1]), # snpt
+        copy.deepcopy(rules[2]), # ESTABLISHED
+        copy.deepcopy(rules[4]), # ALLOW SERVERS (moved ahead)
+        copy.deepcopy(rules[3]), # DROP INVALID
+    ]
+    for idx, r in enumerate(reordered_rules, start=1):
+        r.order = idx
+
+    sim_reordered = FirewallSimulator(reordered_rules, addr_lists)
+    res2 = sim_reordered.simulate(pkt_inbound_invalid)
+    assert res2.verdict == "ACCEPT"
+    assert res2.matched_rule_id == "5" # ALLOW SERVERS
+    assert res2.packet_out.dst_ip == "fd00:1:10::55"
+
+    # Test 3: Outbound packet from server hitting SNPT in postrouting
+    pkt_outbound = SimulationPacket(
+        src_ip="fd00:1:10::55",
+        dst_ip="2001:4860:4860::8888",
+        src_port=54321,
+        dst_port=443,
+        protocol="tcp",
+        connection_state="new",
+        in_interface="10-SERVERS",
+        out_interface="WAN",
+        flow_type="forward"
+    )
+    res_out = sim.simulate(pkt_outbound)
+    assert res_out.verdict == "ACCEPT"
+    assert res_out.packet_out.src_ip == "2001:db8:a01::55"
+
+
 
 
 

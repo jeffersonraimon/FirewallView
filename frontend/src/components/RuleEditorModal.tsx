@@ -71,6 +71,8 @@ export const RuleEditorModal: React.FC<RuleEditorModalProps> = ({
         { value: 'src-nat', label: 'src-nat (SNAT manual)' },
         { value: 'masquerade', label: 'masquerade (NAT Dinâmico)' },
         { value: 'redirect', label: 'redirect (Redirecionar p/ Router)' },
+        { value: 'snpt', label: 'snpt (NPTv6 Stateless Source NAT)' },
+        { value: 'dnpt', label: 'dnpt (NPTv6 Stateless Dest NAT)' },
         { value: 'jump', label: 'jump (Pular para Chain customizada)' },
         { value: 'return', label: 'return (Voltar da Chain)' },
         { value: 'log', label: 'log (Registrar no log)' },
