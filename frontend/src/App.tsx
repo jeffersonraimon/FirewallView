@@ -214,7 +214,7 @@ export function App() {
     } catch (err) {
       if (isAbortError(err) || requestId !== simRequestIdRef.current) return;
       console.error('Simulation error', err);
-      setErrorMessage(errorText(err, 'Falha ao executar a simulação.'));
+      setErrorMessage(errorText(err, 'Falha ao executar a simulaÃ§Ã£o.'));
     } finally {
       if (requestId === simRequestIdRef.current) setLoading(false);
     }
