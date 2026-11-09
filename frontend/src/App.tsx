@@ -8,6 +8,8 @@ import { ImportExportModal } from './components/ImportExportModal';
 import { RuleEditorModal } from './components/RuleEditorModal';
 import { FirewallRule, AddressList, SimulationPacket, SimulationResult } from './types';
 import { fetchPreset, runSimulation } from './api/client';
+import { safeGetItem, safeSetItem } from './utils/storage';
+import { AlertCircle, X } from 'lucide-react';
 
 const STORAGE_KEY_SYNTAX = 'firewallview_current_syntax';
 const STORAGE_KEY_RULES = 'firewallview_rules';
@@ -44,16 +46,32 @@ const BLANK_PACKET: SimulationPacket = {
   is_router_traffic: false
 };
 
+const isAbortError = (err: unknown): boolean =>
+  err instanceof DOMException && err.name === 'AbortError';
+
+const errorText = (err: unknown, fallback: string): string =>
+  err instanceof Error && err.message ? err.message : fallback;
+
 export function App() {
   const [currentSyntax, setCurrentSyntax] = useState<string>(() => {
-    return localStorage.getItem(STORAGE_KEY_SYNTAX) || 'routeros';
+    return safeGetItem(STORAGE_KEY_SYNTAX) || 'routeros';
   });
 
   const [rules, setRules] = useState<FirewallRule[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY_RULES);
+    const saved = safeGetItem(STORAGE_KEY_RULES);
     if (saved !== null) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          // Tolerate rules saved before newer fields (family, is_policy, parse_warnings) existed
+          return parsed.map((r: FirewallRule) => ({
+            ...r,
+            conditions: r.conditions || {},
+            family: r.family ?? null,
+            is_policy: r.is_policy ?? false,
+            parse_warnings: Array.isArray(r.parse_warnings) ? r.parse_warnings : []
+          }));
+        }
       } catch (e) {
         console.error('Error parsing stored rules', e);
       }
@@ -62,7 +80,7 @@ export function App() {
   });
 
   const [addressLists, setAddressLists] = useState<Record<string, AddressList>>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY_LISTS);
+    const saved = safeGetItem(STORAGE_KEY_LISTS);
     if (saved !== null) {
       try {
         return JSON.parse(saved);
@@ -74,7 +92,7 @@ export function App() {
   });
 
   const [packet, setPacket] = useState<SimulationPacket>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY_PACKET);
+    const saved = safeGetItem(STORAGE_KEY_PACKET);
     if (saved !== null) {
       try {
         return JSON.parse(saved);
@@ -89,6 +107,7 @@ export function App() {
   const [selectedStage, setSelectedStage] = useState<string | null>(null);
   const [autoSimulate, setAutoSimulate] = useState<boolean>(true);
   const [loading, setLoading] = useState<boolean>(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Modals state
   const [isImportExportOpen, setIsImportExportOpen] = useState<boolean>(false);
@@ -99,29 +118,31 @@ export function App() {
 
   const debounceTimerRef = useRef<number | null>(null);
   const isFirstMount = useRef<boolean>(true);
+  const simAbortRef = useRef<AbortController | null>(null);
+  const simRequestIdRef = useRef<number>(0);
 
   // Sync state changes to localStorage
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_SYNTAX, currentSyntax);
+    safeSetItem(STORAGE_KEY_SYNTAX, currentSyntax);
   }, [currentSyntax]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_RULES, JSON.stringify(rules));
+    safeSetItem(STORAGE_KEY_RULES, JSON.stringify(rules));
   }, [rules]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_LISTS, JSON.stringify(addressLists));
+    safeSetItem(STORAGE_KEY_LISTS, JSON.stringify(addressLists));
   }, [addressLists]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_PACKET, JSON.stringify(packet));
+    safeSetItem(STORAGE_KEY_PACKET, JSON.stringify(packet));
   }, [packet]);
 
   // Initial load: either run existing state from localStorage, or load preset if first time ever
   useEffect(() => {
     if (isFirstMount.current) {
       isFirstMount.current = false;
-      const hasStoredData = localStorage.getItem(STORAGE_KEY_RULES) !== null;
+      const hasStoredData = safeGetItem(STORAGE_KEY_RULES) !== null;
 
       if (hasStoredData) {
         // Restore and simulate immediately with user's saved state
@@ -142,6 +163,11 @@ export function App() {
   };
 
   const loadPresetData = async (presetName: string) => {
+    // Invalidate any in-flight simulation: the preset replaces the state it was run against
+    simAbortRef.current?.abort();
+    const requestId = ++simRequestIdRef.current;
+    const controller = new AbortController();
+    simAbortRef.current = controller;
     setLoading(true);
     try {
       const data = await fetchPreset(presetName);
@@ -156,12 +182,16 @@ export function App() {
       }
 
       // Trigger simulation
-      const res = await runSimulation(targetPacket, data.rules, data.address_lists);
+      const res = await runSimulation(targetPacket, data.rules, data.address_lists, controller.signal);
+      if (requestId !== simRequestIdRef.current) return;
       setSimulationResult(res);
+      setErrorMessage(null);
     } catch (err) {
+      if (isAbortError(err) || requestId !== simRequestIdRef.current) return;
       console.error('Failed to load preset', err);
+      setErrorMessage(errorText(err, 'Falha ao carregar o preset.'));
     } finally {
-      setLoading(false);
+      if (requestId === simRequestIdRef.current) setLoading(false);
     }
   };
 
@@ -170,14 +200,23 @@ export function App() {
     targetRules = rules,
     targetLists = addressLists
   ) => {
+    // Only the latest request may apply its response; older ones are aborted
+    simAbortRef.current?.abort();
+    const requestId = ++simRequestIdRef.current;
+    const controller = new AbortController();
+    simAbortRef.current = controller;
     setLoading(true);
     try {
-      const res = await runSimulation(targetPacket, targetRules, targetLists);
+      const res = await runSimulation(targetPacket, targetRules, targetLists, controller.signal);
+      if (requestId !== simRequestIdRef.current) return;
       setSimulationResult(res);
+      setErrorMessage(null);
     } catch (err) {
+      if (isAbortError(err) || requestId !== simRequestIdRef.current) return;
       console.error('Simulation error', err);
+      setErrorMessage(errorText(err, 'Falha ao executar a simulação.'));
     } finally {
-      setLoading(false);
+      if (requestId === simRequestIdRef.current) setLoading(false);
     }
   };
 
@@ -283,6 +322,27 @@ export function App() {
         addressListsCount={Object.keys(addressLists).length}
         currentSyntax={currentSyntax}
       />
+
+      {errorMessage && (
+        <div className="max-w-7xl w-full mx-auto px-4 md:px-6 pt-4">
+          <div
+            role="alert"
+            className="p-3 rounded-lg bg-rose-950/60 border border-rose-800/80 text-rose-300 text-xs flex items-start gap-2"
+          >
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+            <span className="flex-1 break-words">{errorMessage}</span>
+            <button
+              type="button"
+              onClick={() => setErrorMessage(null)}
+              className="p-0.5 rounded text-rose-300 hover:text-white hover:bg-rose-900/60 transition"
+              title="Fechar"
+              aria-label="Fechar aviso de erro"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6">
         {/* Packet Injector & Simulator Panel */}

@@ -9,3 +9,7 @@ node_modules
 dist
 .git
 .gitignore
+.pytest_cache
+backend/tests
+frontend/node_modules
+frontend/dist

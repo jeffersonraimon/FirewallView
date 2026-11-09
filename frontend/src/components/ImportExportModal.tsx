@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Upload, Download, Copy, Check, FileText, X, AlertCircle } from 'lucide-react';
+import { Upload, Download, Copy, Check, FileText, X, AlertCircle, AlertTriangle } from 'lucide-react';
 import { FirewallRule, AddressList } from '../types';
 import { importRulesApi, exportRulesApi } from '../api/client';
 
@@ -28,8 +28,15 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
   const [copied, setCopied] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [importWarnings, setImportWarnings] = useState<string[] | null>(null);
+  const [importedSummary, setImportedSummary] = useState<string>('');
 
   if (!isOpen) return null;
+
+  const handleClose = () => {
+    setImportWarnings(null);
+    onClose();
+  };
 
   const handleImport = async () => {
     if (!importContent.trim()) {
@@ -37,6 +44,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
       return;
     }
     setErrorMsg(null);
+    setImportWarnings(null);
     setLoading(true);
     try {
       const res = await importRulesApi(importContent, importSyntax);
@@ -45,7 +53,14 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
         return;
       }
       onImportSuccess(res.rules, res.address_lists, res.detected_syntax);
-      onClose();
+      const warnings = res.warnings || [];
+      if (warnings.length > 0) {
+        // Keep the modal open so the user can read what was not understood
+        setImportedSummary(`${res.rules_count} regra(s) e ${res.address_lists_count} lista(s) importadas.`);
+        setImportWarnings(warnings);
+      } else {
+        onClose();
+      }
     } catch (err: any) {
       setErrorMsg(err.message || 'Erro ao importar regras.');
     } finally {
@@ -140,7 +155,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
           </div>
 
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
           >
             <X className="w-5 h-5" />
@@ -153,6 +168,29 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
             <div className="mb-4 p-3 rounded-lg bg-rose-950/60 border border-rose-800/80 text-rose-300 text-xs flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{errorMsg}</span>
+            </div>
+          )}
+
+          {activeTab === 'import' && importWarnings && importWarnings.length > 0 && (
+            <div className="mb-4 p-3 rounded-lg bg-amber-950/50 border border-amber-800/70 text-amber-300 text-xs">
+              <div className="flex items-center gap-2 font-semibold mb-1.5">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span>{importedSummary} {importWarnings.length} aviso(s): partes não compreendidas ou aproximadas</span>
+              </div>
+              <ul className="list-disc list-inside space-y-0.5 font-mono text-[11px] text-amber-200/90 max-h-40 overflow-y-auto">
+                {importWarnings.map((w, i) => (
+                  <li key={i} className="break-words">{w}</li>
+                ))}
+              </ul>
+              <div className="flex justify-end mt-2">
+                <button
+                  type="button"
+                  onClick={handleClose}
+                  className="px-3 py-1 rounded-lg text-xs font-medium text-amber-100 bg-amber-900/60 hover:bg-amber-800/70 border border-amber-700/60 transition"
+                >
+                  Fechar
+                </button>
+              </div>
             </div>
           )}
 
@@ -201,7 +239,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
 
               <div className="flex justify-end gap-2 pt-2">
                 <button
-                  onClick={onClose}
+                  onClick={handleClose}
                   className="px-4 py-2 rounded-lg text-xs font-medium text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 transition"
                 >
                   Cancelar

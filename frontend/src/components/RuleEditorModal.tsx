@@ -41,6 +41,10 @@ export const RuleEditorModal: React.FC<RuleEditorModalProps> = ({
   const [inIface, setInIface] = useState('');
   const [outIface, setOutIface] = useState('');
   const [connStates, setConnStates] = useState<string[]>([]);
+  const [family, setFamily] = useState<string>('');
+  const [negConnState, setNegConnState] = useState(false);
+  const [negPacketMark, setNegPacketMark] = useState(false);
+  const [negTcpFlags, setNegTcpFlags] = useState(false);
 
   const isPortApplicable = !protocol || ['tcp', 'udp', 'any', ''].includes(protocol.trim().toLowerCase());
 
@@ -220,6 +224,10 @@ export const RuleEditorModal: React.FC<RuleEditorModalProps> = ({
         setInIface(ruleToEdit.conditions.in_interface || '');
         setOutIface(ruleToEdit.conditions.out_interface || '');
         setConnStates(ruleToEdit.conditions.connection_state || []);
+        setFamily(ruleToEdit.family || '');
+        setNegConnState(!!ruleToEdit.conditions.negate_connection_state);
+        setNegPacketMark(!!ruleToEdit.conditions.negate_packet_mark);
+        setNegTcpFlags(!!ruleToEdit.conditions.negate_tcp_flags);
       } else {
         setSelectedSyntax(currentSyntax);
         setTable('filter');
@@ -242,6 +250,10 @@ export const RuleEditorModal: React.FC<RuleEditorModalProps> = ({
         setInIface('');
         setOutIface('');
         setConnStates([]);
+        setFamily('');
+        setNegConnState(false);
+        setNegPacketMark(false);
+        setNegTcpFlags(false);
       }
     }
   }, [ruleToEdit, isOpen, currentSyntax]);
@@ -290,7 +302,14 @@ export const RuleEditorModal: React.FC<RuleEditorModalProps> = ({
       nat_to_ports: ['dst-nat', 'redirect'].includes(action) ? natPorts : undefined,
       comment: comment.trim() || undefined,
       disabled: ruleToEdit ? ruleToEdit.disabled : false,
+      // Preserve fields the editor does not expose (policy flag, parser warnings, raw syntax)
+      is_policy: ruleToEdit?.is_policy,
+      parse_warnings: ruleToEdit?.parse_warnings,
+      raw_syntax: ruleToEdit?.raw_syntax,
+      family: family === 'ipv4' || family === 'ipv6' ? family : null,
       conditions: {
+        // Keep conditions not editable here (tcp_flags, packet_mark, limit, negations, ...)
+        ...(ruleToEdit?.conditions || {}),
         protocol: protocol.trim() || undefined,
         src_address: srcAddress.trim() || undefined,
         dst_address: dstAddress.trim() || undefined,
@@ -301,7 +320,10 @@ export const RuleEditorModal: React.FC<RuleEditorModalProps> = ({
         port: (isPortApplicable && anyPort.trim()) ? anyPort.trim() : undefined,
         in_interface: inIface.trim() || undefined,
         out_interface: outIface.trim() || undefined,
-        connection_state: connStates.length > 0 ? connStates : undefined
+        connection_state: connStates.length > 0 ? connStates : undefined,
+        negate_connection_state: connStates.length > 0 && negConnState ? true : undefined,
+        negate_packet_mark: ruleToEdit?.conditions?.packet_mark && negPacketMark ? true : undefined,
+        negate_tcp_flags: ruleToEdit?.conditions?.tcp_flags?.length && negTcpFlags ? true : undefined
       }
     };
 
@@ -604,6 +626,10 @@ export const RuleEditorModal: React.FC<RuleEditorModalProps> = ({
             {/* Conntrack States */}
             <div>
               <label className="text-slate-400 block mb-1.5">Connection State / Estado</label>
+              <label className="flex items-center gap-1.5 mb-1.5 text-slate-400 cursor-pointer w-fit">
+                <input type="checkbox" checked={negConnState} onChange={(e) => setNegConnState(e.target.checked)} className="accent-rose-500" />
+                <span>Negar (<span className="font-mono">!</span>) estado</span>
+              </label>
               <div className="flex flex-wrap gap-2">
                 {['new', 'established', 'related', 'invalid', 'untracked'].map((st) => {
                   const active = connStates.includes(st);
@@ -624,6 +650,38 @@ export const RuleEditorModal: React.FC<RuleEditorModalProps> = ({
                 })}
               </div>
             </div>
+          </div>
+
+          {/* Address family + remaining negations */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="text-slate-400 block mb-1 font-medium">Família de endereços</label>
+              <select
+                value={family}
+                onChange={(e) => setFamily(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-slate-100 focus:border-cyan-500 focus:outline-none"
+              >
+                <option value="">IPv4 e IPv6 (ambas)</option>
+                <option value="ipv4">Somente IPv4</option>
+                <option value="ipv6">Somente IPv6</option>
+              </select>
+            </div>
+            {(ruleToEdit?.conditions?.packet_mark || (ruleToEdit?.conditions?.tcp_flags?.length ?? 0) > 0) && (
+              <div className="space-y-1.5">
+                {ruleToEdit?.conditions?.packet_mark && (
+                  <label className="flex items-center gap-1.5 text-slate-400 cursor-pointer w-fit">
+                    <input type="checkbox" checked={negPacketMark} onChange={(e) => setNegPacketMark(e.target.checked)} className="accent-rose-500" />
+                    <span>Negar (<span className="font-mono">!</span>) packet-mark <span className="font-mono text-slate-300">{ruleToEdit.conditions.packet_mark}</span></span>
+                  </label>
+                )}
+                {(ruleToEdit?.conditions?.tcp_flags?.length ?? 0) > 0 && (
+                  <label className="flex items-center gap-1.5 text-slate-400 cursor-pointer w-fit">
+                    <input type="checkbox" checked={negTcpFlags} onChange={(e) => setNegTcpFlags(e.target.checked)} className="accent-rose-500" />
+                    <span>Negar (<span className="font-mono">!</span>) tcp-flags <span className="font-mono text-slate-300">{ruleToEdit?.conditions?.tcp_flags?.join(',')}</span></span>
+                  </label>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Comment / Term Name / Remark */}
