@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Play, Sparkles, Activity, RotateCcw, ArrowLeftRight, History, Trash2, X } from 'lucide-react';
 import { SimulationPacket } from '../types';
+import { safeGetItem, safeSetItem } from '../utils/storage';
 
 const STORAGE_KEY_INPUT_HISTORY = 'firewallview_input_history_v1';
 
@@ -24,7 +25,7 @@ const DEFAULT_HISTORY: InputHistory = {
 
 const getStoredHistory = (): InputHistory => {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY_INPUT_HISTORY);
+    const raw = safeGetItem(STORAGE_KEY_INPUT_HISTORY);
     if (!raw) return DEFAULT_HISTORY;
     const parsed = JSON.parse(raw);
     return {
@@ -97,7 +98,7 @@ export const PacketSimulatorPanel: React.FC<PacketSimulatorPanelProps> = ({
         if (isNaN(numVal) || numVal <= 0 || numVal > 65535) return prev;
         const nextPorts = [numVal, ...prev.ports.filter((p) => p !== numVal)].slice(0, 20);
         const updated = { ...prev, ports: nextPorts };
-        localStorage.setItem(STORAGE_KEY_INPUT_HISTORY, JSON.stringify(updated));
+        safeSetItem(STORAGE_KEY_INPUT_HISTORY, JSON.stringify(updated));
         return updated;
       } else {
         const strVal = String(value).trim();
@@ -105,7 +106,7 @@ export const PacketSimulatorPanel: React.FC<PacketSimulatorPanelProps> = ({
         const currentList = prev[type] as string[];
         const nextList = [strVal, ...currentList.filter((item) => item.toLowerCase() !== strVal.toLowerCase())].slice(0, 20);
         const updated = { ...prev, [type]: nextList };
-        localStorage.setItem(STORAGE_KEY_INPUT_HISTORY, JSON.stringify(updated));
+        safeSetItem(STORAGE_KEY_INPUT_HISTORY, JSON.stringify(updated));
         return updated;
       }
     });
@@ -119,7 +120,7 @@ export const PacketSimulatorPanel: React.FC<PacketSimulatorPanelProps> = ({
       } else {
         updated = { ...prev, [type]: (prev[type] as string[]).filter((item) => item !== value) };
       }
-      localStorage.setItem(STORAGE_KEY_INPUT_HISTORY, JSON.stringify(updated));
+      safeSetItem(STORAGE_KEY_INPUT_HISTORY, JSON.stringify(updated));
       return updated;
     });
   };
@@ -127,7 +128,7 @@ export const PacketSimulatorPanel: React.FC<PacketSimulatorPanelProps> = ({
   const clearCategoryHistory = (type: 'ips' | 'ports' | 'interfaces') => {
     setHistory((prev) => {
       const updated = { ...prev, [type]: [] };
-      localStorage.setItem(STORAGE_KEY_INPUT_HISTORY, JSON.stringify(updated));
+      safeSetItem(STORAGE_KEY_INPUT_HISTORY, JSON.stringify(updated));
       return updated;
     });
   };

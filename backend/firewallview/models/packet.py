@@ -1,3 +1,4 @@
+import ipaddress
 from typing import List, Optional
 from pydantic import BaseModel, Field
 
@@ -15,6 +16,16 @@ class SimulationPacket(BaseModel):
     connection_nat_state: Optional[str] = None # dstnat, srcnat, or None
     flow_type: str = "forward" # "forward" (transit), "input" (to router), "output" (from router)
     is_router_traffic: bool = False # kept for backward compatibility
+
+    @property
+    def family(self) -> Optional[str]:
+        """'ipv4' / 'ipv6' derived from src_ip (dst_ip as fallback); None if neither parses."""
+        for value in (self.src_ip, self.dst_ip):
+            try:
+                return "ipv4" if ipaddress.ip_address(str(value).strip()).version == 4 else "ipv6"
+            except ValueError:
+                continue
+        return None
 
 class RuleEvaluation(BaseModel):
     rule_id: str

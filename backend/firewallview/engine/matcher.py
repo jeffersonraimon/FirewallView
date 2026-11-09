@@ -1,6 +1,6 @@
 import re
 import ipaddress
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 from firewallview.models.rules import FirewallRule, RuleCondition
 from firewallview.models.packet import SimulationPacket
 from firewallview.models.address_list import AddressList
@@ -71,17 +71,32 @@ PROTOCOL_MAP = {
     "112": "vrrp",
     "ipv6-icmp": "icmp6",
     "icmpv6": "icmp6",
+    "icmp6": "icmp6",
 }
 
 def normalize_protocol_name(proto: str) -> str:
     cleaned = proto.strip().lower()
     return PROTOCOL_MAP.get(cleaned, cleaned)
 
+def ip_family(ip_str: str) -> Optional[str]:
+    """Returns 'ipv4', 'ipv6' or None for an address string."""
+    try:
+        return "ipv4" if ipaddress.ip_address(ip_str.strip()).version == 4 else "ipv6"
+    except (ValueError, AttributeError):
+        return None
+
+def packet_family(packet: SimulationPacket) -> Optional[str]:
+    """Family of the packet, derived from src_ip (falls back to dst_ip)."""
+    return ip_family(packet.src_ip) or ip_family(packet.dst_ip)
+
 def is_ip_matching(packet_ip_str: str, condition_str: str) -> bool:
-    """Checks if packet_ip matches single IP, CIDR, range, or comma-separated list."""
+    """Checks if packet_ip matches single IP, CIDR, range, or comma-separated list.
+
+    Entries of a different IP version than the packet simply never match.
+    """
     try:
         pkt_ip = ipaddress.ip_address(packet_ip_str.strip())
-    except ValueError:
+    except (ValueError, AttributeError):
         return False
 
     for part in condition_str.split(","):
@@ -92,14 +107,20 @@ def is_ip_matching(packet_ip_str: str, condition_str: str) -> bool:
         kind = parsed[0]
         if kind == "range":
             _, start_ip, end_ip = parsed
+            if start_ip.version != pkt_ip.version or end_ip.version != pkt_ip.version:
+                continue
             if start_ip <= pkt_ip <= end_ip:
                 return True
         elif kind == "network":
             _, net = parsed
+            if net.version != pkt_ip.version:
+                continue
             if pkt_ip in net:
                 return True
         elif kind == "ip":
             _, ip = parsed
+            if ip.version != pkt_ip.version:
+                continue
             if pkt_ip == ip:
                 return True
     return False
@@ -191,6 +212,15 @@ def evaluate_rule_match(
     reasons: List[str] = []
     c = rule.conditions
 
+    # 0. Address family (rule.family None = both)
+    if rule.family:
+        rule_family = rule.family.strip().lower()
+        pkt_family = packet_family(packet)
+        if rule_family in ("ipv4", "ipv6") and pkt_family != rule_family:
+            return False, [f"Family mismatch: rule applies to {rule_family}, packet is {pkt_family or 'unknown'}"]
+        if rule_family in ("ipv4", "ipv6"):
+            reasons.append(f"Family: packet is {pkt_family}")
+
     # 1. Protocol match
     if c.protocol and c.protocol.strip():
         cond_proto = c.protocol.strip().lower()
@@ -198,8 +228,7 @@ def evaluate_rule_match(
         if cond_proto not in ["any", "all", "ip"]:
             protos = [p.strip().lower() for p in cond_proto.split(",") if p.strip()]
             proto_match = any(
-                normalize_protocol_name(p) == normalize_protocol_name(pkt_proto) or
-                (normalize_protocol_name(p) in ["icmp", "icmp6"] and normalize_protocol_name(pkt_proto) in ["icmp", "icmp6"])
+                normalize_protocol_name(p) == normalize_protocol_name(pkt_proto)
                 for p in protos
             )
             if c.negate_protocol:
@@ -347,15 +376,56 @@ def evaluate_rule_match(
             reasons.append(f"Out-Interface mismatch: '{packet.out_interface}' != '{c.out_interface}'")
             return False, reasons
 
-    # 10. Connection State
-    if c.connection_state and len(c.connection_state) > 0:
-        # Check if packet's connection state is in any of the rule's allowed states
-        rule_states = [s.strip().lower() for s in c.connection_state if s.strip()]
-        pkt_state = (packet.connection_state or "new").strip().lower()
-        if pkt_state in rule_states:
-            reasons.append(f"Connection state '{pkt_state}' matches allowed {rule_states}")
+    # 9b. Interface lists (membership is inferred from interface names, see is_interface_matching)
+    for direction, pkt_iface in (("in", packet.in_interface), ("out", packet.out_interface)):
+        list_name = getattr(c, f"{direction}_interface_list", None)
+        if not list_name or not list_name.strip():
+            continue
+        matched = is_interface_matching(pkt_iface or "", list_name.strip())
+        if getattr(c, f"negate_{direction}_interface_list", False):
+            matched = not matched
+        label = f"{direction.capitalize()}-Interface-List"
+        if matched:
+            reasons.append(f"{label} '{pkt_iface}' member of '{list_name}'")
         else:
-            reasons.append(f"Connection state mismatch: '{pkt_state}' not in {rule_states}")
+            reasons.append(f"{label} mismatch: '{pkt_iface}' not in '{list_name}'")
+            return False, reasons
+
+    # 10. Connection State (negate flag and legacy "!state" values)
+    if c.connection_state and len(c.connection_state) > 0:
+        raw_states = [s.strip().lower() for s in c.connection_state if s and s.strip()]
+        positives = [s for s in raw_states if not s.startswith("!")]
+        negatives = [s[1:].strip() for s in raw_states if s.startswith("!")]
+        pkt_state = (packet.connection_state or "new").strip().lower()
+        matched = True
+        if positives and pkt_state not in positives:
+            matched = False
+        if negatives and pkt_state in negatives:
+            matched = False
+        if c.negate_connection_state:
+            matched = not matched
+        desc = f"{'!' if c.negate_connection_state else ''}{raw_states}"
+        if matched:
+            reasons.append(f"Connection state '{pkt_state}' matches {desc}")
+        else:
+            reasons.append(f"Connection state mismatch: '{pkt_state}' vs {desc}")
+            return False, reasons
+
+    # 10a. Packet mark
+    if c.packet_mark and c.packet_mark.strip():
+        req_mark = c.packet_mark.strip()
+        pkt_marks = list(packet.packet_marks or [])
+        if req_mark.lower() == "no-mark":
+            matched = len(pkt_marks) == 0
+        else:
+            matched = req_mark in pkt_marks
+        if c.negate_packet_mark:
+            matched = not matched
+        neg = "!" if c.negate_packet_mark else ""
+        if matched:
+            reasons.append(f"Packet mark {neg}'{req_mark}' matches (packet marks: {pkt_marks})")
+        else:
+            reasons.append(f"Packet mark mismatch: {neg}'{req_mark}' vs packet marks {pkt_marks}")
             return False, reasons
 
     # 10b. Connection NAT State (dstnat, srcnat, !dstnat)
@@ -374,11 +444,11 @@ def evaluate_rule_match(
 
     # 10c. Rate limit (e.g. limit=50,5:packet)
     if c.limit and c.limit.strip():
-        reasons.append(f"Rate limit '{c.limit}' checked (packet within threshold)")
+        reasons.append("limit not simulated (assumed match)")
 
     # 10d. IPsec policy
     if c.ipsec_policy and c.ipsec_policy.strip():
-        reasons.append(f"IPsec policy matched: '{c.ipsec_policy}'")
+        reasons.append("ipsec-policy not simulated (assumed match)")
 
     # 11. TCP Flags
     if c.tcp_flags and len(c.tcp_flags) > 0:
@@ -387,23 +457,28 @@ def evaluate_rule_match(
             return False, reasons
         pkt_flags = set(f.strip().lower() for f in packet.tcp_flags)
         flag_mismatch = False
+        flag_reason = ""
         for flag_req in c.tcp_flags:
             flag_req = flag_req.strip().lower()
             if flag_req.startswith("!"):
                 actual_flag = flag_req[1:]
                 if actual_flag in pkt_flags:
-                    reasons.append(f"TCP Flag mismatch: '{actual_flag}' must NOT be set")
+                    flag_reason = f"TCP Flag mismatch: '{actual_flag}' must NOT be set"
                     flag_mismatch = True
                     break
             else:
                 if flag_req not in pkt_flags:
-                    reasons.append(f"TCP Flag mismatch: '{flag_req}' is not set in packet")
+                    flag_reason = f"TCP Flag mismatch: '{flag_req}' is not set in packet"
                     flag_mismatch = True
                     break
+        if c.negate_tcp_flags:
+            flag_mismatch = not flag_mismatch
+            flag_reason = f"TCP Flags {sorted(pkt_flags)} mismatch: packet satisfies the negated requirement !{c.tcp_flags}"
         if flag_mismatch:
+            reasons.append(flag_reason or f"TCP Flags {sorted(pkt_flags)} do not satisfy {c.tcp_flags}")
             return False, reasons
         else:
-            reasons.append(f"TCP Flags {list(pkt_flags)} matched requirements {c.tcp_flags}")
+            reasons.append(f"TCP Flags {sorted(pkt_flags)} matched requirements {'!' if c.negate_tcp_flags else ''}{c.tcp_flags}")
 
     if not reasons:
         reasons.append("Match all (unconditional rule)")

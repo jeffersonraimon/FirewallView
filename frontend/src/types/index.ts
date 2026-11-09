@@ -9,6 +9,8 @@ export interface RuleCondition {
   port?: string;
   in_interface?: string;
   out_interface?: string;
+  in_interface_list?: string;
+  out_interface_list?: string;
   connection_state?: string[];
   connection_nat_state?: string;
   limit?: string;
@@ -25,7 +27,12 @@ export interface RuleCondition {
   negate_port?: boolean;
   negate_in_interface?: boolean;
   negate_out_interface?: boolean;
+  negate_in_interface_list?: boolean;
+  negate_out_interface_list?: boolean;
   negate_connection_nat_state?: boolean;
+  negate_connection_state?: boolean;
+  negate_packet_mark?: boolean;
+  negate_tcp_flags?: boolean;
 }
 
 export interface FirewallRule {
@@ -46,6 +53,9 @@ export interface FirewallRule {
   comment?: string;
   disabled: boolean;
   raw_syntax?: string;
+  family?: 'ipv4' | 'ipv6' | null;
+  is_policy?: boolean;
+  parse_warnings?: string[];
 }
 
 export interface AddressListEntry {

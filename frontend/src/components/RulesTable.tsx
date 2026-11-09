@@ -11,7 +11,8 @@ import {
   Filter,
   Layers,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  AlertTriangle
 } from 'lucide-react';
 import { FirewallRule, SimulationResult, RuleEvaluation } from '../types';
 
@@ -64,8 +65,32 @@ export const RulesTable: React.FC<RulesTableProps> = ({
     return [...defaultChains, ...Array.from(customChains).sort()];
   }, [rules]);
 
+  // Policy rules (default chain policy) are displayed after the regular rules of their chain.
+  // Chains keep the position of their first rule; the sort is stable otherwise.
+  const displayRules = useMemo(() => {
+    if (!rules.some((r) => r.is_policy)) return rules;
+    const chainKey = (r: FirewallRule) => `${r.table}/${r.chain}`.toLowerCase();
+    const firstIndex = new Map<string, number>();
+    rules.forEach((r, i) => {
+      if (!firstIndex.has(chainKey(r))) firstIndex.set(chainKey(r), i);
+    });
+    return rules
+      .map((r, i) => ({ r, i }))
+      .sort((a, b) => {
+        const ka = chainKey(a.r);
+        const kb = chainKey(b.r);
+        if (ka === kb) {
+          const pa = a.r.is_policy ? 1 : 0;
+          const pb = b.r.is_policy ? 1 : 0;
+          return pa !== pb ? pa - pb : a.i - b.i;
+        }
+        return (firstIndex.get(ka) ?? 0) - (firstIndex.get(kb) ?? 0) || a.i - b.i;
+      })
+      .map((x) => x.r);
+  }, [rules]);
+
   // Filter rules
-  const filteredRules = rules.filter((r) => {
+  const filteredRules = displayRules.filter((r) => {
     if (selectedStage) {
       // Find stage in simulation result to get its table/chain
       const stage = simulationResult?.stages.find(s => s.stage_id === selectedStage);
@@ -253,6 +278,23 @@ export const RulesTable: React.FC<RulesTableProps> = ({
                         <span className="text-[10px] text-slate-500 uppercase font-mono block">
                           {rule.table}
                         </span>
+                        {(rule.is_policy || rule.family) && (
+                          <span className="flex flex-wrap gap-1 mt-1">
+                            {rule.is_policy && (
+                              <span
+                                className="px-1.5 py-0.5 rounded border text-[9px] font-mono font-bold bg-fuchsia-950 text-fuchsia-300 border-fuchsia-800"
+                                title="Política padrão da chain (aplicada quando nenhuma regra casa)"
+                              >
+                                POLICY
+                              </span>
+                            )}
+                            {rule.family && (
+                              <span className="px-1.5 py-0.5 rounded border text-[9px] font-mono font-bold bg-sky-950 text-sky-300 border-sky-800">
+                                {rule.family === 'ipv6' ? 'IPv6' : 'IPv4'}
+                              </span>
+                            )}
+                          </span>
+                        )}
                       </td>
 
                       {/* Action */}
@@ -344,18 +386,28 @@ export const RulesTable: React.FC<RulesTableProps> = ({
                               out:{rule.conditions.negate_out_interface ? '!' : ''}{rule.conditions.out_interface}
                             </span>
                           )}
+                          {rule.conditions.in_interface_list && (
+                            <span className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-cyan-300">
+                              in-list:{rule.conditions.negate_in_interface_list ? '!' : ''}{rule.conditions.in_interface_list}
+                            </span>
+                          )}
+                          {rule.conditions.out_interface_list && (
+                            <span className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-cyan-300">
+                              out-list:{rule.conditions.negate_out_interface_list ? '!' : ''}{rule.conditions.out_interface_list}
+                            </span>
+                          )}
 
                           {/* Connection State */}
                           {rule.conditions.connection_state && rule.conditions.connection_state.length > 0 && (
                             <span className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-teal-300">
-                              state:{rule.conditions.connection_state.join(',')}
+                              state:{rule.conditions.negate_connection_state ? '!' : ''}{rule.conditions.connection_state.join(',')}
                             </span>
                           )}
 
                           {/* TCP Flags */}
                           {rule.conditions.tcp_flags && rule.conditions.tcp_flags.length > 0 && (
                             <span className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-amber-300">
-                              tcp-flags:{rule.conditions.tcp_flags.join(',')}
+                              tcp-flags:{rule.conditions.negate_tcp_flags ? '!' : ''}{rule.conditions.tcp_flags.join(',')}
                             </span>
                           )}
 
@@ -363,6 +415,13 @@ export const RulesTable: React.FC<RulesTableProps> = ({
                           {rule.conditions.connection_nat_state && (
                             <span className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-purple-300 font-semibold">
                               nat-state:{rule.conditions.negate_connection_nat_state ? '!' : ''}{rule.conditions.connection_nat_state}
+                            </span>
+                          )}
+
+                          {/* Packet Mark */}
+                          {rule.conditions.packet_mark && (
+                            <span className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-pink-300">
+                              mark:{rule.conditions.negate_packet_mark ? '!' : ''}{rule.conditions.packet_mark}
                             </span>
                           )}
 
@@ -384,6 +443,15 @@ export const RulesTable: React.FC<RulesTableProps> = ({
 
                       {/* Comment */}
                       <td className="py-3 px-3 text-slate-400 italic max-w-xs truncate">
+                        {rule.parse_warnings && rule.parse_warnings.length > 0 && (
+                          <span
+                            className="inline-flex align-middle mr-1.5 not-italic text-amber-400"
+                            title={rule.parse_warnings.join('\n')}
+                            aria-label={`${rule.parse_warnings.length} aviso(s) de interpretação`}
+                          >
+                            <AlertTriangle className="w-3.5 h-3.5" />
+                          </span>
+                        )}
                         {rule.comment || '-'}
                       </td>
 
