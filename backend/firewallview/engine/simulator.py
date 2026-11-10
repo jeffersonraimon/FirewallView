@@ -405,8 +405,11 @@ class FirewallSimulator:
 
             elif action_lower in ["mark-packet", "mark-connection", "mark-routing"]:
                 mark = rule.mark_value or "marked"
-                if mark not in packet.packet_marks:
-                    packet.packet_marks.append(mark)
+                # A new mark REPLACES the previous one (nft `meta mark set`, iptables
+                # MARK --set-mark, RouterOS new-packet-mark). The model has a single
+                # mark slot shared by packet/connection/routing marks, kept as a list
+                # for compatibility; it always holds at most one value.
+                packet.packet_marks[:] = [mark]
                 eval_item.applied_effect = f"Applied {action_lower}: '{mark}'"
                 stage_eval.evaluated_rules.append(eval_item)
 
@@ -492,6 +495,7 @@ class FirewallSimulator:
             new_ip, note = _resolve_nat_address(packet.dst_ip, rule.nat_to_addresses)
             if note:
                 notes.append(note)
+            old_ip, old_port = packet.dst_ip, packet.dst_port
             if new_ip:
                 packet.dst_ip = new_ip
             port, note = _resolve_nat_port(rule.nat_to_ports)
@@ -499,7 +503,9 @@ class FirewallSimulator:
                 notes.append(note)
             if port is not None and has_ports:
                 packet.dst_port = port
-            packet.connection_nat_state = "dstnat"
+            # RouterOS (verified on CHR 7.25.1): connection-nat-state=dstnat only when address or port really changed
+            if packet.dst_ip != old_ip or packet.dst_port != old_port:
+                packet.connection_nat_state = "dstnat"
             effect = f"Destination NAT applied: {orig} -> {packet.dst_ip}:{packet.dst_port}"
 
         elif action in ("src-nat", "masquerade"):

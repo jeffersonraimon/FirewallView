@@ -1,0 +1,16 @@
+# kd: packets=70
+table inet mangle {
+  chain prerouting {
+    type filter hook prerouting priority -150; policy accept;
+    ip saddr 192.168.1.100 meta mark set 0x10
+    tcp dport 25 meta mark set 0x20
+    ip6 saddr fd00:1::64 meta mark set 0x10
+  }
+}
+table inet filter {
+  chain forward {
+    type filter hook forward priority 0; policy accept;
+    meta mark 0x10 drop
+    meta mark != 0x20 tcp dport 8080 drop
+  }
+}

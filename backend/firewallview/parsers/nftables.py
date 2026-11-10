@@ -961,8 +961,18 @@ class _RuleParser:
                 i += 1
                 if i < n and toks[i].text.lower() == "with":
                     i += 1
-                    while i < n and toks[i].kind == "w" and toks[i].text.lower() not in STOP_WORDS:
+                    # `reject with <icmp|icmpv6|icmpx> type <t>` / `reject with tcp reset`
+                    if i < n and toks[i].kind == "w" and toks[i].text.lower() in ("icmp", "icmpv6", "icmpx", "tcp"):
+                        fam_w = toks[i].text.lower()
                         i += 1
+                        if fam_w == "tcp":
+                            if i < n and toks[i].text.lower() == "reset":
+                                i += 1
+                        elif i < n and toks[i].text.lower() == "type":
+                            i += 2
+                    else:
+                        while i < n and toks[i].kind == "w" and toks[i].text.lower() not in STOP_WORDS:
+                            i += 1
                 actions.append({"action": "reject"})
                 continue
 

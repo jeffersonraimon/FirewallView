@@ -1,0 +1,13 @@
+# kd: packets=60
+table inet raw {
+  chain prerouting {
+    type filter hook prerouting priority -300; policy accept;
+    ip saddr 198.51.100.0/24 drop
+    udp dport 1900 drop
+    ip6 saddr 2001:db8:2::/64 drop
+  }
+}
+table inet filter {
+  chain forward { type filter hook forward priority 0; policy accept; tcp dport 25 drop; }
+  chain input { type filter hook input priority 0; policy accept; }
+}

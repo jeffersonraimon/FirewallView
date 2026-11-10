@@ -1,0 +1,16 @@
+# kd: packets=70
+table inet filter {
+  chain forward {
+    type filter hook forward priority 0; policy drop;
+    ip6 saddr fd00:1::/64 ip6 daddr 2001:db8:1::/64 tcp dport { 80, 443 } accept
+    ip6 saddr fd00:1::64 accept
+    ip6 nexthdr icmpv6 icmpv6 type echo-request accept
+    ip daddr 203.0.113.10 tcp dport 22 accept
+  }
+  chain input {
+    type filter hook input priority 0; policy drop;
+    ip6 saddr fd00:1::/64 tcp dport 22 accept
+    meta l4proto icmpv6 accept
+    ip protocol icmp accept
+  }
+}

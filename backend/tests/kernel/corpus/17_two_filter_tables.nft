@@ -1,0 +1,15 @@
+# kd: packets=60
+table inet fw_a {
+  chain forward {
+    type filter hook forward priority 0; policy accept;
+    tcp dport 22 accept
+    udp dport 53 accept
+  }
+}
+table inet fw_b {
+  chain forward {
+    type filter hook forward priority 10; policy accept;
+    tcp dport 22 drop
+    ip saddr 192.168.1.100 drop
+  }
+}

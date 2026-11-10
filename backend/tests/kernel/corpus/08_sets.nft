@@ -1,0 +1,15 @@
+# kd: packets=70
+table inet filter {
+  set blk4 { type ipv4_addr; flags interval; elements = { 192.168.1.100, 198.51.100.0/26, 192.0.2.50-192.0.2.60 } }
+  set blk6 { type ipv6_addr; elements = { fd00:1::64, 2001:db8:2::5 } }
+  set ports { type inet_service; flags interval; elements = { 22, 8000-8100 } }
+  chain forward {
+    type filter hook forward priority 0; policy accept;
+    ip saddr @blk4 drop
+    ip daddr @blk4 tcp dport 443 drop
+    ip6 saddr @blk6 drop
+    tcp dport @ports ip daddr 203.0.113.20 drop
+    ip daddr { 192.0.2.77, 203.0.113.99 } udp dport { 53, 123 } drop
+    ip saddr != @blk4 ip daddr 203.0.113.10 tcp dport 8081 drop
+  }
+}

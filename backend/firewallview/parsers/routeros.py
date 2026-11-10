@@ -247,6 +247,12 @@ def _build_rule(props: Dict[str, str], menu, line: str, order: int, comment, dis
             setattr(cond, "negate_" + attr, neg)
             setattr(cond, attr, val)
 
+    if (cond.port or cond.src_port or cond.dst_port) and (
+            not cond.protocol or cond.negate_protocol
+            or cond.protocol not in ("tcp", "udp", "udp-lite", "sctp", "dccp")):
+        warnings.append("RouterOS rejects ports without protocol tcp/udp/udp-lite/sctp/dccp "
+                        "(rule as written cannot be loaded)")
+
     for direction in ("in", "out"):
         iface = props.get(f"{direction}-interface")
         iface_list = props.get(f"{direction}-interface-list")
