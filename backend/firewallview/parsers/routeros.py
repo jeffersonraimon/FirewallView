@@ -153,6 +153,33 @@ def _join_print_entries(content: str) -> str:
     return "\n".join(out)
 
 
+_LINE_START = re.compile(
+    r"^\s*(/|#|;;;|Flags:|Columns:|\d+\s|:|"
+    r"(add|set|remove|print|disable|enable|move|unset|export)(\s|$))")
+
+
+def _join_hard_wraps(content: str) -> str:
+    """
+    Text copied from a terminal is often hard-wrapped at a fixed column, even in
+    the middle of a token ("src-address-" / "list=x"), with no trailing backslash.
+    A line that does not start a new command, comment or menu is glued back onto
+    the previous command line exactly as it is (no space added: a wrap that
+    happened at a space keeps that space as the continuation's leading blank).
+    Proper backslash continuations and terminal `print` entries are left alone.
+    """
+    out: List[str] = []
+    for raw in content.splitlines():
+        prev = out[-1] if out else ""
+        prev_s = prev.strip()
+        is_command = prev_s.startswith("/") or re.match(r"^add(\s|$)", prev_s) is not None
+        if (raw.strip() and out and is_command and not prev.rstrip().endswith("\\")
+                and not _LINE_START.match(raw)):
+            out[-1] = prev.rstrip("\r\n") + raw.rstrip("\r\n")
+            continue
+        out.append(raw)
+    return "\n".join(out)
+
+
 _VERBS = {"add", "set", "remove", "print", "disable", "enable", "move", "comment", "find",
           "export", "get", "edit", "reset-counters", "reset-counters-all", "unset", "monitor"}
 _MENU_KINDS = {"filter", "nat", "mangle", "raw", "address-list"}
@@ -340,7 +367,7 @@ def parse_routeros_script(content: str) -> Tuple[List[FirewallRule], Dict[str, A
     rule_order = 1
     pending_comment = None
 
-    lines = merge_multiline_routeros(_join_print_entries(content))
+    lines = merge_multiline_routeros(_join_print_entries(_join_hard_wraps(content)))
 
     for line in lines:
         line_clean = line.strip()
