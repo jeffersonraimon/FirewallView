@@ -1,0 +1,16 @@
+# kd: packets=70
+table ip nat {
+  chain prerouting {
+    type nat hook prerouting priority -100;
+    ip daddr 198.51.100.5 tcp dport 80 dnat to 192.168.1.100
+    iifname "ether1-wan" ip daddr 203.0.113.1 tcp dport 8443 dnat to 192.168.1.50:443
+  }
+  chain postrouting {
+    type nat hook postrouting priority 100;
+    ip saddr 192.168.1.0/24 ip daddr 192.168.1.0/24 masquerade
+    oifname "ether1-wan" udp dport 123 snat to 203.0.113.1:123
+  }
+}
+table inet filter {
+  chain forward { type filter hook forward priority 0; policy accept; ip daddr 192.168.1.100 tcp dport 22 drop; }
+}

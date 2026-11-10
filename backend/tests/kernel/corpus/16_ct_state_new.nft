@@ -1,0 +1,15 @@
+# kd: packets=60
+table inet filter {
+  chain forward {
+    type filter hook forward priority 0; policy drop;
+    ct state new tcp dport 22 accept
+    ct state new ip saddr 192.168.1.0/24 accept
+    ct state invalid drop
+    ct state established,related accept
+  }
+  chain input {
+    type filter hook input priority 0; policy accept;
+    ct state != new drop
+    ct state new tcp dport 23 drop
+  }
+}

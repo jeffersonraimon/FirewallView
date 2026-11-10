@@ -1,0 +1,11 @@
+# kd: packets=70
+table inet filter {
+  chain forward {
+    type filter hook forward priority 0; policy drop;
+    ip protocol icmp ip saddr 192.168.1.50 accept
+    meta l4proto udp ip saddr 192.168.1.100 accept
+    meta l4proto tcp ip saddr 192.168.1.200 accept
+    meta l4proto icmpv6 accept
+    meta l4proto { tcp, udp } th dport 9999 accept
+  }
+}

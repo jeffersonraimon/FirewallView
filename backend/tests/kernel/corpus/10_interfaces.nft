@@ -1,0 +1,15 @@
+# kd: packets=60
+table inet filter {
+  chain forward {
+    type filter hook forward priority 0; policy drop;
+    iifname "ether2-lan" oifname "ether1-wan" ip daddr 203.0.113.10 accept
+    iifname "ether1-wan" oifname "ether2-lan" tcp dport 8080 accept
+    iifname "ether*" udp dport 123 accept
+    oifname != "ether1-wan" ip saddr 203.0.113.99 accept
+  }
+  chain input {
+    type filter hook input priority 0; policy drop;
+    iifname "ether2-lan" accept
+    iifname "ether1-wan" tcp dport 443 accept
+  }
+}

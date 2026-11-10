@@ -23,7 +23,7 @@ UNSUPPORTED_TARGETS = {
 }
 KNOWN_MODULES = {
     "tcp", "udp", "icmp", "icmp6", "sctp", "multiport", "conntrack", "state",
-    "mark", "set", "comment", "limit", "policy",
+    "mark", "set", "comment", "limit", "policy", "iprange",
 }
 # Options that carry an argument we deliberately ignore (target cosmetics).
 IGNORED_ARG1 = {
@@ -238,6 +238,7 @@ def _parse_command(tokens: List[str], line: str, table: str, family: str):
     limit_rate = limit_burst = None
     pol_dir = pol_pol = None
     cond = RuleCondition()
+    range_set: set = set()
 
     n = len(tokens)
     i = 0
@@ -319,8 +320,26 @@ def _parse_command(tokens: List[str], line: str, table: str, family: str):
         if tok in ADDR_OPTS:
             v, neg, i = arg(i + 1, negate)
             if v is not None:
-                setattr(cond, ADDR_OPTS[tok][0], v)
-                setattr(cond, ADDR_OPTS[tok][1], neg)
+                fld = ADDR_OPTS[tok][0]
+                if fld in ("in_interface", "out_interface") and v.endswith("+"):
+                    v = v[:-1] + "*"   # iptables wildcard -> matcher wildcard
+                if fld in range_set:
+                    warn(f"{tok} combined with iprange on the same side; kept the range only")
+                else:
+                    setattr(cond, fld, v)
+                    setattr(cond, ADDR_OPTS[tok][1], neg)
+            negate = False
+            continue
+        if tok in ("--src-range", "--dst-range"):
+            v, neg, i = arg(i + 1, negate)
+            if v is not None:
+                fld = "src_address" if tok == "--src-range" else "dst_address"
+                if getattr(cond, fld):
+                    warn(f"{tok} combined with -{fld[0]} on the same side; kept the earlier address match only")
+                else:
+                    setattr(cond, fld, v)
+                    setattr(cond, "negate_" + fld, neg)
+                    range_set.add(fld)
             negate = False
             continue
         if tok in PORT_OPTS:
@@ -333,8 +352,21 @@ def _parse_command(tokens: List[str], line: str, table: str, family: str):
         if tok in ("--state", "--ctstate"):
             v, neg, i = arg(i + 1, negate)
             if v is not None:
-                cond.connection_state = [s.strip().lower() for s in v.split(",") if s.strip()]
-                cond.negate_connection_state = neg
+                states = [s.strip().lower() for s in v.split(",") if s.strip()]
+                nat = [s for s in states if s in ("dnat", "snat")]
+                rest = [s for s in states if s not in ("dnat", "snat")]
+                if nat:
+                    if len(nat) > 1:
+                        warn("--ctstate DNAT,SNAT cannot be represented; NAT state ignored")
+                    else:
+                        cond.connection_nat_state = "dstnat" if nat[0] == "dnat" else "srcnat"
+                        cond.negate_connection_nat_state = neg
+                        if rest and not neg:
+                            warn("--ctstate mixing DNAT/SNAT with other states is an OR; "
+                                 "only the NAT state and the other states are ANDed (narrower)")
+                if rest or not nat:
+                    cond.connection_state = rest
+                    cond.negate_connection_state = neg
             negate = False
             continue
         if tok == "--ctstatus":

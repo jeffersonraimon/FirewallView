@@ -120,8 +120,11 @@ def test_matchers():
 def test_unknown_goes_to_warnings():
     r = one("iptables -A INPUT -p icmp --icmp-type echo-request -j ACCEPT")
     assert any("icmp-type" in w for w in r.parse_warnings)
+    r = one("iptables -A INPUT -m string --string foo --algo bm -j DROP")
+    assert any("string" in w for w in r.parse_warnings)
+    # iprange is modelled since the kernel-differential fixes: no warning, real range
     r = one("iptables -A INPUT -m iprange --src-range 192.0.2.1-192.0.2.9 -j DROP")
-    assert any("iprange" in w for w in r.parse_warnings)
+    assert r.conditions.src_address == "192.0.2.1-192.0.2.9" and not r.parse_warnings
     r = one("iptables -A INPUT -m addrtype --src-type LOCAL -j DROP")
     assert r.parse_warnings
 

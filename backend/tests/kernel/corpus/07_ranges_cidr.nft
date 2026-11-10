@@ -1,0 +1,11 @@
+# kd: packets=70
+table inet filter {
+  chain forward {
+    type filter hook forward priority 0; policy drop;
+    ip saddr 192.168.1.64-192.168.1.127 accept
+    ip daddr 198.51.100.0/25 tcp dport 1-1023 accept
+    ip daddr 192.0.2.10-192.0.2.20 udp dport 1000-1100 accept
+    ip6 saddr fd00:1::40-fd00:1::7f accept
+    ip6 daddr 2001:db8:2::/112 accept
+  }
+}

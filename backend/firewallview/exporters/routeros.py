@@ -1,3 +1,4 @@
+import hashlib
 import re
 from typing import Dict, List
 from firewallview.models.rules import FirewallRule
@@ -121,8 +122,51 @@ def _list_line(name: str, entry) -> str:
     return cmd
 
 
+def _split_addrs(value) -> List[str]:
+    return [a.strip() for a in value.split(",") if a.strip()] if value and "," in value else []
+
+
+def _lower_comma_lists(r: FirewallRule, generated: Dict[str, tuple]) -> List[FirewallRule]:
+    """RouterOS 7.25 rejects comma lists in src-address/dst-address (also negated). A list becomes a generated
+    address-list `fwv-<hash>` referenced by src/dst-address-list (works for negation); `generated` collects
+    name -> (family, [addresses]). When the rule already uses an address-list on that side, positive lists are
+    expanded into one rule per address instead."""
+    c = r.conditions
+    out = r.model_copy(deep=True)
+    todo = []
+    for side in ("src", "dst"):
+        addrs = _split_addrs(getattr(c, f"{side}_address"))
+        if not addrs:
+            continue
+        if getattr(c, f"{side}_address_list"):
+            todo.append((side, addrs))
+            continue
+        digest = hashlib.sha1(f"{r.family}|{','.join(addrs)}".encode()).hexdigest()[:10]
+        name = f"fwv-{digest}"
+        generated.setdefault(name, (r.family, addrs))
+        setattr(out.conditions, f"{side}_address", None)
+        setattr(out.conditions, f"{side}_address_list", name)
+        setattr(out.conditions, f"negate_{side}_address_list", getattr(c, f"negate_{side}_address"))
+        setattr(out.conditions, f"negate_{side}_address", False)
+    result = [out]
+    for side, addrs in todo:
+        if getattr(c, f"negate_{side}_address"):
+            continue  # cannot be expressed; left as-is
+        expanded = []
+        for base in result:
+            for a in addrs:
+                copy = base.model_copy(deep=True)
+                setattr(copy.conditions, f"{side}_address", a)
+                expanded.append(copy)
+        result = expanded
+    return result
+
+
 def export_to_routeros(rules: List[FirewallRule], address_lists: Dict[str, AddressList]) -> str:
     lines = ["# Exported by FirewallView (MikroTik RouterOS v6/v7 syntax)", ""]
+
+    generated: Dict[str, tuple] = {}
+    rules = [x for r in rules for x in _lower_comma_lists(r, generated)]
 
     # Address lists: entries holding IPv6 addresses go under /ipv6 firewall.
     v4_lines: List[str] = []
@@ -130,6 +174,9 @@ def export_to_routeros(rules: List[FirewallRule], address_lists: Dict[str, Addre
     for name, alist in (address_lists or {}).items():
         for entry in alist.entries:
             (v6_lines if ":" in entry.address else v4_lines).append(_list_line(name, entry))
+    for name, (family, addrs) in generated.items():
+        for addr in addrs:
+            (v6_lines if family == "ipv6" else v4_lines).append(f"add list={name} address={addr}")
     for menu, entries in (("/ip firewall address-list", v4_lines), ("/ipv6 firewall address-list", v6_lines)):
         if entries:
             lines.append(menu)

@@ -1,3 +1,4 @@
+import hashlib
 import re
 import shlex
 from typing import Dict, List, Optional, Tuple
@@ -178,16 +179,36 @@ def _build_rule(r: FirewallRule, tool: str, chain_names: Dict[Tuple[str, str], s
             return unsupported("tcp flags need protocol tcp")
 
     out: List[str] = list(notes)
-    for p in protos:
+
+    # iptables rejects "!" together with a multi-address (a,b) -s/-d, on either side.
+    #  * negated multi-address side: moved to a helper chain whose rules RETURN for every listed
+    #    address; the rule's target is its last rule (the parent jumps to the helper);
+    #  * a positive multi-address side next to a negated side: expanded into one rule per address.
+    def _multi(a: Optional[str]) -> bool:
+        return bool(a) and "," in a
+    neg_multi = [sd for sd in ("src", "dst")
+                 if _multi(getattr(c, f"{sd}_address")) and getattr(c, f"negate_{sd}_address")]
+    any_neg = bool(c.negate_src_address and c.src_address) or bool(c.negate_dst_address and c.dst_address)
+    if neg_multi and act == "return":
+        return unsupported("negated multi-address match with a RETURN target")
+    variants: List[Dict[str, str]] = [{}]
+    for sd in ("src", "dst"):
+        a = getattr(c, f"{sd}_address")
+        if a and not (sd in neg_multi):
+            if _multi(a) and any_neg:
+                variants = [dict(v, **{sd: x.strip()}) for v in variants for x in a.split(",") if x.strip()]
+            elif a:
+                variants = [dict(v, **{sd: a}) for v in variants]
+
+    for p, var in [(p_, v_) for p_ in protos for v_ in variants]:
         cmd = list(base)
         if p:
             if c.negate_protocol:
                 cmd.append("!")
             cmd += ["-p", p]
-        if c.src_address:
-            cmd += (["!"] if c.negate_src_address else []) + ["-s", c.src_address]
-        if c.dst_address:
-            cmd += (["!"] if c.negate_dst_address else []) + ["-d", c.dst_address]
+        for sd, flag in (("src", "-s"), ("dst", "-d")):
+            if sd in var:
+                cmd += (["!"] if getattr(c, f"negate_{sd}_address") else []) + [flag, var[sd]]
         if c.in_interface:
             cmd += (["!"] if c.negate_in_interface else []) + ["-i", c.in_interface]
         if c.out_interface:
@@ -231,8 +252,21 @@ def _build_rule(r: FirewallRule, tool: str, chain_names: Dict[Tuple[str, str], s
                 return unsupported(f"ipsec-policy '{c.ipsec_policy}'")
         if r.comment:
             cmd += ["-m", "comment", "--comment", " ".join(r.comment.split())[:255]]
-        cmd += tgt
-        out.append(" ".join(shlex.quote(t) if t not in ("!",) else t for t in cmd))
+        q = lambda toks: " ".join(shlex.quote(t) if t not in ("!",) else t for t in toks)
+        if neg_multi:
+            hname = "FWV_" + hashlib.sha1(f"{r.id}|{tool}|{p}|{sorted(var.items())}".encode()).hexdigest()[:10]
+            tt = [] if table == "filter" else ["-t", table]
+            out.append(q([tool] + tt + ["-N", hname]))
+            for sd, flag in (("src", "-s"), ("dst", "-d")):
+                if sd in neg_multi:
+                    for x in getattr(c, f"{sd}_address").split(","):
+                        if x.strip():
+                            out.append(q([tool] + tt + ["-A", hname, flag, x.strip(), "-j", "RETURN"]))
+            out.append(q([tool] + tt + ["-A", hname] + tgt))
+            cmd += ["-j", hname]
+        else:
+            cmd += tgt
+        out.append(q(cmd))
     return out
 
 
